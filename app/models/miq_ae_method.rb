@@ -60,7 +60,10 @@ class MiqAeMethod < ApplicationRecord
   end
 
   def to_export_yaml
-    export_attributes
+    export_attributes.tap do |hash|
+      hash.delete('options') if options.empty?
+      hash.delete('embedded_methods') if embedded_methods.empty?
+    end
   end
 
   def method_inputs
@@ -124,5 +127,9 @@ class MiqAeMethod < ApplicationRecord
   def self.find_by_class_id_and_name(class_id, name)
     ae_method_filter = ::MiqAeMethod.arel_table[:name].lower.matches(name)
     ::MiqAeMethod.where(ae_method_filter).where(:class_id => class_id).first
+  end
+
+  def self.display_name(number = 1)
+    n_('Automate Method', 'Automate Methods', number)
   end
 end

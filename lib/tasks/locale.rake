@@ -72,7 +72,7 @@ namespace :locale do
     end
 
     config_file = args[:root].join('config/locale_task_config.yaml')
-    return unless config_file.exist?
+    next unless config_file.exist?
 
     yamls = YAML.load_file(config_file)['yaml_strings_to_extract']
     output = {}
@@ -142,9 +142,10 @@ namespace :locale do
     Rake::Task['locale:store_dictionary_strings'].invoke
     Rake::Task['locale:run_store_model_attributes'].invoke
     Rake::Task['locale:extract_yaml_strings'].invoke(Rails.root)
+    Rake::Task['locale:model_display_names'].invoke
     Rake::Task['gettext:find'].invoke
 
-    Dir["config/dictionary_strings.rb", "config/model_attributes.rb", "config/yaml_strings.rb", "locale/**/*.edit.po", "locale/**/*.po.time_stamp"].each do |file|
+    Dir["config/dictionary_strings.rb", "config/model_attributes.rb", "config/model_display_names.rb", "config/yaml_strings.rb", "locale/**/*.edit.po", "locale/**/*.po.time_stamp"].each do |file|
       File.unlink(file)
     end
   end
@@ -190,29 +191,70 @@ namespace :locale do
 
   desc "Convert PO files from all plugins to JS files"
   task "po_to_json" => :environment do
-    require_relative 'gettext_task_override.rb'
-    require Rails.root.join("lib/vmdb/gettext/domains")
+    begin
+      require_relative 'gettext_task_override.rb'
+      require Rails.root.join('lib/manageiq/environment')
+      require Rails.root.join("lib/vmdb/gettext/domains")
 
-    po_files = {}
-    Vmdb::Gettext::Domains.paths.each do |path|
-      files = ::Pathname.glob(::File.join(path, "**", "*.po"))
-      files.each do |file|
-        locale = file.dirname.basename.to_s
-        po_files[locale] ||= []
-        po_files[locale].push(file)
+      po_files = {}
+      Vmdb::Gettext::Domains.paths.each do |path|
+        files = ::Pathname.glob(::File.join(path, "**", "*.po"))
+        files.each do |file|
+          locale = file.dirname.basename.to_s
+          po_files[locale] ||= []
+          po_files[locale].push(file)
+        end
       end
-    end
 
-    combined_dir = File.join(Rails.root, "locale/combined")
-    Dir.mkdir(combined_dir, 0700)
-    po_files.keys.each do |locale|
-      dir = File.join(combined_dir, locale)
-      po = File.join(dir, 'manageiq.po')
-      Dir.mkdir(dir, 0700)
-      system "rmsgcat -o #{po} #{po_files[locale].join(' ')}"
-    end
+      js_plugins = {
+        'ui-components' => {
+          'en'    => 'https://raw.githubusercontent.com/ManageIQ/ui-components/master/locale/en/ui-components.po',
+          'es'    => 'https://raw.githubusercontent.com/ManageIQ/ui-components/master/locale/es/ui-components.po',
+          'fr'    => 'https://raw.githubusercontent.com/ManageIQ/ui-components/master/locale/fr/ui-components.po',
+          'ja'    => 'https://raw.githubusercontent.com/ManageIQ/ui-components/master/locale/ja/ui-components.po',
+          'pt_BR' => 'https://raw.githubusercontent.com/ManageIQ/ui-components/master/locale/pt_BR/ui-components.po',
+          'zh_CN' => 'https://raw.githubusercontent.com/ManageIQ/ui-components/master/locale/zh_CN/ui-components.po',
+        }
+      }
 
-    Rake::Task['gettext:po_to_json'].invoke
-    system "rm -rf #{combined_dir}"
+      plugins_dir = File.join(Rails.root, 'locale/plugins')
+      Dir.mkdir(plugins_dir, 0700)
+      js_plugins.each do |plugin, content|
+        plugin_dir = File.join(plugins_dir, plugin)
+        Dir.mkdir(plugin_dir)
+        content.each do |lang, url|
+          lang_dir = File.join(plugin_dir, lang)
+          Dir.mkdir(lang_dir)
+          lang_file = "#{lang_dir}/#{url.split('/')[-1]}"
+          ManageIQ::Environment.system! "curl -f -o #{lang_file} #{url}"
+          po_files[lang] ||= []
+          po_files[lang].push(Pathname(lang_file))
+        end
+      end
+
+      combined_dir = File.join(Rails.root, "locale/combined")
+      Dir.mkdir(combined_dir, 0700)
+      po_files.keys.each do |locale|
+        dir = File.join(combined_dir, locale)
+        po = File.join(dir, 'manageiq.po')
+        Dir.mkdir(dir, 0700)
+        system "rmsgcat -o #{po} #{po_files[locale].join(' ')}"
+      end
+
+      Rake::Task['gettext:po_to_json'].invoke
+    ensure
+      system "rm -rf #{combined_dir} #{plugins_dir}"
+    end
+  end
+
+  desc "Create display names for models"
+  task "model_display_names" => :environment do
+    f = File.open(Rails.root.join("config/model_display_names.rb"), "w+")
+    Rails.application.eager_load!
+    ApplicationRecord.descendants.sort_by(&:display_name).collect do |model|
+      next if model.model_name.singular.titleize != model.display_name || model.display_name.start_with?('ManageIQ')
+      f.puts "n_('#{model.display_name}', '#{model.display_name 2}', n)"
+    end
+    f.close
   end
 end

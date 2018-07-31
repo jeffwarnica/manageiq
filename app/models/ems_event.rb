@@ -1,10 +1,6 @@
 class EmsEvent < EventStream
   include_concern 'Automate'
 
-  virtual_column :group,       :type => :symbol
-  virtual_column :group_level, :type => :symbol
-  virtual_column :group_name,  :type => :string
-
   CLONE_TASK_COMPLETE = "CloneVM_Task_Complete"
   SOURCE_DEST_TASKS = [
     'CloneVM_Task',
@@ -24,38 +20,8 @@ class EmsEvent < EventStream
     ::Settings.event_handling.task_final_events.to_hash
   end
 
-  def self.event_groups
-    core_event_groups = ::Settings.event_handling.event_groups.to_hash
-    Settings.ems.each_with_object(core_event_groups) do |(_provider_type, provider_settings), event_groups|
-      provider_event_groups = provider_settings.fetch_path(:event_handling, :event_groups)
-      next unless provider_event_groups
-      DeepMerge.deep_merge!(
-        provider_event_groups.to_hash, event_groups,
-        :preserve_unmergeables => false,
-        :overwrite_arrays      => false
-      )
-    end
-  end
-
   def self.bottleneck_event_groups
     ::Settings.event_handling.bottleneck_event_groups.to_hash
-  end
-
-  def self.group_and_level(event_type)
-    group, v = event_groups.find { |_k, v| v[:critical].include?(event_type) || v[:detail].include?(event_type) }
-    if group.nil?
-      group, level = :other, :detail
-    else
-      level = v[:detail].include?(event_type) ? :detail : :critical
-    end
-    return group, level
-  end
-
-  def self.group_name(group)
-    return nil if group.nil?
-    group = event_groups[group.to_sym]
-    return nil if group.nil?
-    group[:name]
   end
 
   def self.add_queue(meth, ems_id, event)
@@ -118,13 +84,11 @@ class EmsEvent < EventStream
   def self.process_vm_in_event!(event, options = {})
     prefix           = options[:prefix]
     options[:id_key] = "#{prefix}vm_or_template_id".to_sym
+    uid_ems          = event.delete(:vm_uid_ems)
     process_object_in_event!(Vm, event, options)
 
     if options[:id_key] == :vm_or_template_id && event[:vm_or_template_id].nil?
-      # uid_ems is used for non-VC events, and should be nil for VC events.
-      uid_ems = event.fetch_path(:full_data, :vm, :uid_ems)
-      vm      = VmOrTemplate.find_by(:uid_ems => uid_ems) unless uid_ems.nil?
-
+      vm = VmOrTemplate.find_by(:uid_ems => uid_ems) unless uid_ems.nil?
       unless vm.nil?
         event[:vm_or_template_id] = vm.id
         event[:vm_name] ||= vm.name
@@ -182,22 +146,6 @@ class EmsEvent < EventStream
     @first_chained_event ||= EmsEvent.first_chained_event(ems_id, chain_id) || self
   end
 
-  def group
-    return @group unless @group.nil?
-    @group, @group_level = self.class.group_and_level(event_type)
-    @group
-  end
-
-  def group_level
-    return @group_level unless @group_level.nil?
-    @group, @group_level = self.class.group_and_level(event_type)
-    @group_level
-  end
-
-  def group_name
-    @group_name ||= self.class.group_name(group)
-  end
-
   def get_target(target_type)
     target_type = target_type.to_s
     if target_type =~ /^first_chained_(.+)$/
@@ -222,10 +170,19 @@ class EmsEvent < EventStream
     ext_management_system.class::EventTargetParser.new(self).parse
   end
 
+  def self.display_name(number = 1)
+    n_('Management Event', 'Management Events', number)
+  end
+
   private
 
+  def self.event_allowed_ems_ref_keys
+    %w(vm_ems_ref dest_vm_ems_ref)
+  end
+  private_class_method :event_allowed_ems_ref_keys
+
   def self.create_event(event)
-    event.delete_if { |k,| k.to_s.ends_with?("_ems_ref") }
+    event.delete_if { |k,| k.to_s.ends_with?("_ems_ref") && !event_allowed_ems_ref_keys.include?(k.to_s) }
 
     new_event = EmsEvent.create(event) unless EmsEvent.exists?(
       :event_type  => event[:event_type],
@@ -272,6 +229,7 @@ class EmsEvent < EventStream
         :host_id           => source_event.host_id,
         :vm_name           => source_event.vm_name,
         :vm_location       => source_event.vm_location,
+        :vm_ems_ref        => source_event.vm_ems_ref,
         :vm_or_template_id => source_event.vm_or_template_id
       }
       new_event[:username] = event.username unless event.username.blank?
@@ -286,6 +244,7 @@ class EmsEvent < EventStream
           :dest_host_id           => dest_event.host_id,
           :dest_vm_name           => dest_event.send("#{dest_key}vm_name"),
           :dest_vm_location       => dest_event.send("#{dest_key}vm_location"),
+          :dest_vm_ems_ref        => dest_event.send("#{dest_key}vm_ems_ref"),
           :dest_vm_or_template_id => dest_event.send("#{dest_key}vm_or_template_id")
         )
       end

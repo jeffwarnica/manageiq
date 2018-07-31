@@ -158,7 +158,7 @@ describe User do
   end
 
   context "#authorize_ldap" do
-    before(:each) do
+    before do
       @fq_user = "thin1@manageiq.com"
       @task = MiqTask.create(:name => "LDAP User Authorization of '#{@fq_user}'", :userid => @fq_user)
       @auth_config =
@@ -178,6 +178,8 @@ describe User do
       stub_server_configuration(@auth_config)
       @miq_ldap = double('miq_ldap')
       allow(@miq_ldap).to receive_messages(:bind => false)
+
+      EvmSpecHelper.create_guid_miq_server_zone
     end
 
     it "will fail task if user object not found in ldap" do
@@ -215,14 +217,14 @@ describe User do
   end
 
   context "group assignment" do
-    before(:each) do
+    before do
       @group1 = FactoryGirl.create(:miq_group, :description => "EvmGroup 1")
       @group2 = FactoryGirl.create(:miq_group, :description => "EvmGroup 2")
       @group3 = FactoryGirl.create(:miq_group, :description => "EvmGroup 3")
     end
 
     describe "#miq_groups=" do
-      before(:each) do
+      before do
         @user = FactoryGirl.create(:user, :miq_groups => [@group3])
       end
 
@@ -252,7 +254,7 @@ describe User do
     end
 
     describe "#current_group=" do
-      before(:each) do
+      before do
         @user = FactoryGirl.create(:user, :miq_groups => [@group1, @group2])
       end
 
@@ -277,7 +279,7 @@ describe User do
   end
 
   context "Testing active VM aggregation" do
-    before :each do
+    before do
       @ram_size = 1024
       @disk_size = 1_000_000
       @num_cpu = 2
@@ -347,6 +349,10 @@ describe User do
 
   context ".authenticate_with_http_basic" do
     let(:user) { FactoryGirl.create(:user, :password => "dummy") }
+
+    before do
+      EvmSpecHelper.create_guid_miq_server_zone
+    end
 
     it "should login with good username/password" do
       expect(User.authenticate_with_http_basic(user.userid, user.password)).to eq([true, user.userid])

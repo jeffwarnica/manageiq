@@ -36,6 +36,23 @@ describe OrchestrationTemplate do
         expect(@existing_record).not_to eq(OrchestrationTemplate.find_or_create_by_contents(@query_hash)[0])
         expect(OrchestrationTemplate.count).to eq(2)
       end
+
+      it "uses subclass if type is present" do
+        expect(ManageIQ::Providers::Vmware::CloudManager::OrchestrationTemplate).to receive(:calc_md5).at_least(:once)
+        expect(described_class).not_to receive(:calc_md5)
+
+        @query_hash[:draft] = false
+        @query_hash[:type] = ManageIQ::Providers::Vmware::CloudManager::OrchestrationTemplate.name
+        OrchestrationTemplate.find_or_create_by_contents(@query_hash)
+      end
+
+      it "uses parent if type is not present" do
+        expect(described_class).to receive(:calc_md5).at_least(:once)
+
+        @query_hash[:draft] = false
+        @query_hash[:type] = nil
+        OrchestrationTemplate.find_or_create_by_contents(@query_hash)
+      end
     end
   end
 
@@ -289,6 +306,22 @@ describe OrchestrationTemplate do
       options = subject.deployment_options
       assert_deployment_option(options[0], "tenant_name", :OrchestrationParameterAllowedDynamic, true)
       assert_deployment_option(options[1], "stack_name", :OrchestrationParameterPattern, true)
+    end
+  end
+
+  describe ".tabs" do
+    it do
+      expect(subject).to receive(:deployment_options).and_return('deployment-options')
+      expect(subject).to receive(:parameter_groups).and_return('parameter-groups')
+      expect(subject.tabs).to eq(
+        [
+          {
+            :title        => 'Basic Information',
+            :stack_group  => 'deployment-options',
+            :param_groups => 'parameter-groups'
+          }
+        ]
+      )
     end
   end
 

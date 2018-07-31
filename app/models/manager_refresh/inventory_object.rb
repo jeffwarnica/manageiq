@@ -6,6 +6,9 @@ module ManagerRefresh
     delegate :manager_ref, :base_class_name, :model_class, :to => :inventory_collection
     delegate :[], :[]=, :to => :data
 
+    # @param inventory_collection [ManagerRefresh::InventoryCollection] InventoryCollection object owning the
+    #        InventoryObject
+    # @param data [Hash] Data of the InventoryObject object
     def initialize(inventory_collection, data)
       @inventory_collection     = inventory_collection
       @data                     = data
@@ -14,22 +17,25 @@ module ManagerRefresh
       @reference                = inventory_collection.build_reference(data)
     end
 
+    # @return [String] stringified reference
     def manager_uuid
       reference.stringified_reference
     end
 
-    def to_raw_lazy_relation
-      {
-        :type                      => "ManagerRefresh::InventoryObjectLazy",
-        :inventory_collection_name => inventory_collection.name,
-        :ems_ref                   => manager_uuid,
-      }
-    end
-
+    # @return [ManagerRefresh::InventoryObject] returns self
     def load
       self
     end
 
+    def key
+      nil
+    end
+
+    # Transforms InventoryObject object data into hash format with keys that are column names and resolves correct
+    # values of the foreign keys (even the polymorphic ones)
+    #
+    # @param inventory_collection_scope [ManagerRefresh::InventoryCollection] parent InventoryCollection object
+    # @return [Hash] Data in DB format
     def attributes(inventory_collection_scope = nil)
       # We should explicitly pass a scope, since the inventory_object can be mapped to more InventoryCollections with
       # different blacklist and whitelist. The generic code always passes a scope.
@@ -78,6 +84,12 @@ module ManagerRefresh
       attributes_for_saving
     end
 
+    # Transforms InventoryObject object data into hash format with keys that are column names and resolves correct
+    # values of the foreign keys (even the polymorphic ones)
+    #
+    # @param inventory_collection_scope [ManagerRefresh::InventoryCollection] parent InventoryCollection object
+    # @param all_attribute_keys [Array<Symbol>] Attribute keys we will modify based on object's data
+    # @return [Hash] Data in DB format
     def attributes_with_keys(inventory_collection_scope = nil, all_attribute_keys = [])
       # We should explicitly pass a scope, since the inventory_object can be mapped to more InventoryCollections with
       # different blacklist and whitelist. The generic code always passes a scope.
@@ -120,42 +132,70 @@ module ManagerRefresh
       attributes_for_saving
     end
 
+    # Given hash of attributes, we assign them to InventoryObject object using its public writers
+    #
+    # @param attributes [Hash] attributes we want to assign
+    # @return [ManagerRefresh::InventoryObject] self
     def assign_attributes(attributes)
       attributes.each { |k, v| public_send("#{k}=", v) }
       self
     end
 
+    # @return [String] stringified UUID
     def to_s
       manager_uuid
     end
 
+    # @return [String] string format for nice logging
     def inspect
       "InventoryObject:('#{manager_uuid}', #{inventory_collection})"
     end
 
+    # @return [TrueClass] InventoryObject object is always a dependency
     def dependency?
       true
     end
 
+    # Adds setters and getters based on :inventory_object_attributes kwarg passed into InventoryCollection
+    # Methods already defined should not be redefined (causes unexpected behaviour)
+    #
+    # @param inventory_object_attributes [Array<Symbol>]
     def self.add_attributes(inventory_object_attributes)
+      defined_methods = ManagerRefresh::InventoryObject.instance_methods(false)
+
       inventory_object_attributes.each do |attr|
-        define_method("#{attr}=") do |value|
-          data[attr] = value
+        unless defined_methods.include?("#{attr}=".to_sym)
+          define_method("#{attr}=") do |value|
+            data[attr] = value
+          end
         end
 
-        define_method(attr) do
-          data[attr]
+        unless defined_methods.include?(attr.to_sym)
+          define_method(attr) do
+            data[attr]
+          end
         end
       end
     end
 
     private
 
+    # Return true passed key representing a getter is an association
+    #
+    # @param inventory_collection_scope [ManagerRefresh::InventoryCollection]
+    # @param key [Symbol] key representing getter
+    # @return [Boolean] true if the passed key points to association
     def association?(inventory_collection_scope, key)
       # Is the key an association on inventory_collection_scope model class?
       !inventory_collection_scope.association_to_foreign_key_mapping[key].nil?
     end
 
+    # Return true if the attribute is allowed to be saved into the DB
+    #
+    # @param inventory_collection_scope [ManagerRefresh::InventoryCollection] InventoryCollection object owning the
+    #        attribute
+    # @param key [Symbol] attribute name
+    # @return true if the attribute is allowed to be saved into the DB
     def allowed?(inventory_collection_scope, key)
       foreign_to_association = inventory_collection_scope.foreign_key_to_association_mapping[key] ||
                                inventory_collection_scope.foreign_type_to_association_mapping[key]
@@ -171,6 +211,10 @@ module ManagerRefresh
       true
     end
 
+    # Return true if the object is loadable, which we determine by a list of loadable classes.
+    #
+    # @param value [Object] object we test
+    # @return true if the object is loadable
     def loadable?(value)
       value.kind_of?(::ManagerRefresh::InventoryObjectLazy) || value.kind_of?(::ManagerRefresh::InventoryObject) ||
         value.kind_of?(::ManagerRefresh::ApplicationRecordReference)

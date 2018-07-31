@@ -1,63 +1,87 @@
+require 'singleton'
+
 module Vmdb
   class Plugins
     include Singleton
+    private_class_method :instance
 
-    attr_reader :registered_automate_domains
+    include Enumerable
 
-    def initialize
-      @registered_automate_domains = []
-      @registered_provider_plugin_map = {}
-      @vmdb_plugins = []
+    def self.method_missing(m, *args, &block)
+      instance.respond_to?(m) ? instance.send(m, *args, &block) : super
     end
 
-    def vmdb_plugins
-      @vmdb_plugins.empty? ? register_vmdb_plugins : @vmdb_plugins
+    def self.respond_to_missing?(*args)
+      instance.respond_to?(*args)
     end
 
-    def register_vmdb_plugins
-      Rails.application.railties.each do |railtie|
-        next unless railtie.class.name.start_with?("ManageIQ::Providers::") || railtie.try(:vmdb_plugin?)
-        register_vmdb_plugin(railtie)
+    def all
+      @all ||=
+        Rails::Engine.subclasses.select do |engine|
+          engine.name.start_with?("ManageIQ::Providers::") || engine.try(:vmdb_plugin?)
+        end.sort_by(&:name)
+    end
+
+    def each(&block)
+      all.each(&block)
+    end
+
+    def init
+      load_inflections
+      register_models
+    end
+
+    def ansible_content
+      @ansible_content ||= begin
+        require_relative 'plugins/ansible_content'
+        flat_map do |engine|
+          content_directories(engine, "ansible").map { |dir| AnsibleContent.new(dir) }
+        end
       end
-
-      @vmdb_plugins
     end
 
-    def register_vmdb_plugin(engine)
-      @vmdb_plugins << engine
-
-      register_automate_domains(engine)
-      register_provider_plugin(engine)
-
-      # make sure STI models are recognized
-      DescendantLoader.instance.descendants_paths << engine.root.join('app')
-    end
-
-    def registered_provider_plugin_names
-      @registered_provider_plugin_map.keys
-    end
-
-    def registered_provider_plugins
-      @registered_provider_plugin_map.values
+    def automate_domains
+      @automate_domains ||= begin
+        require_relative 'plugins/automate_domain'
+        flat_map do |engine|
+          content_directories(engine, "automate").map { |dir| AutomateDomain.new(dir) }
+        end
+      end
     end
 
     def system_automate_domains
-      registered_automate_domains.select(&:system?)
+      @system_automate_domains ||= automate_domains.select(&:system?)
+    end
+
+    def provider_plugins
+      @provider_plugins ||= select { |engine| engine.name.start_with?("ManageIQ::Providers::") }
+    end
+
+    def asset_paths
+      @asset_paths ||= begin
+        require_relative 'plugins/asset_path'
+        map { |engine| AssetPath.new(engine) if AssetPath.asset_path?(engine) }.compact
+      end
+    end
+
+    def load_inflections
+      each do |engine|
+        file = engine.root.join("config", "initializers", "inflections.rb")
+        load file if file.exist?
+      end
+    end
+
+    def register_models
+      each do |engine|
+        # make sure STI models are recognized
+        DescendantLoader.instance.descendants_paths << engine.root.join('app')
+      end
     end
 
     private
 
-    def register_provider_plugin(engine)
-      if engine.class.name.start_with?("ManageIQ::Providers::")
-        provider_name = ManageIQ::Providers::Inflector.provider_name(engine).underscore.to_sym
-        @registered_provider_plugin_map[provider_name] = engine
-      end
-    end
-
-    def register_automate_domains(engine)
-      Dir.glob(engine.root.join("content", "automate", "*")).each do |domain_directory|
-        @registered_automate_domains << AutomateDomain.new(domain_directory)
-      end
+    def content_directories(engine, subfolder)
+      Dir.glob(engine.root.join("content", subfolder, "*"))
     end
   end
 end

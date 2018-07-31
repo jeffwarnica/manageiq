@@ -21,7 +21,7 @@ class Dialog < ApplicationRecord
   def self.seed
     dialog_import_service = DialogImportService.new
 
-    Vmdb::Plugins.instance.vmdb_plugins.each do |plugin|
+    Vmdb::Plugins.each do |plugin|
       Dir.glob(plugin.root.join(DIALOG_DIR_PLUGIN, YAML_FILES_PATTERN)).each do |file|
         dialog_import_service.import_all_service_dialogs_from_yaml_file(file)
       end
@@ -88,13 +88,31 @@ class Dialog < ApplicationRecord
     result
   end
 
-  def init_fields_with_values(values)
-    dialog_field_hash.each do |key, field|
+  def load_values_into_fields(values)
+    dialog_field_hash.each_value do |field|
       field.dialog = self
-      values[key] = field.value
+      field.value = values[field.automate_key_name] || values[field.name]
     end
-    dialog_field_hash.each { |key, field| values[key] = field.initialize_with_values(values) }
-    dialog_field_hash.each { |_key, field| field.update_values(values) }
+  end
+
+  def initialize_with_given_values(values)
+    dialog_field_hash.each_value do |field|
+      field.dialog = self
+      field.value = values[field.automate_key_name] || values[field.name]
+    end
+
+    dialog_field_hash.each_value do |field|
+      given_value = values[field.automate_key_name] || values[field.name]
+      field.initialize_with_given_value(given_value)
+    end
+  end
+
+  def initialize_value_context(_values)
+    dialog_field_hash.each_value do |field|
+      field.dialog = self
+    end
+
+    dialog_field_hash.each_value(&:initialize_value_context)
   end
 
   def init_fields_with_values_for_request(values)
@@ -112,10 +130,6 @@ class Dialog < ApplicationRecord
 
     workflow = ResourceActionWorkflow.new({}, User.current_user, resource_action, :target => target)
 
-    workflow.dialog.dialog_fields.each do |dialog_field|
-      # Accessing dialog_field.values forces an update for any values coming from automate
-      dialog_field.values = dialog_field.values
-    end
     DialogSerializer.new.serialize(Array[workflow.dialog], all_attributes)
   end
 

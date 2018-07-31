@@ -37,7 +37,7 @@ describe MiqExpression do
         let(:volume_2_type_field_cost) { "#{model}-storage_allocated_#{volume_2.volume_type}_cost" }
         let(:volume_3_type_field_cost) { "#{model}-storage_allocated_#{volume_3.volume_type}_cost" }
 
-        before(:each) do
+        before do
           volume_1
           volume_2
         end
@@ -50,11 +50,13 @@ describe MiqExpression do
 
           # case: change name
           volume_2.update_attributes!(:volume_type => 'NEW_TYPE_2')
+          ChargebackVm.current_volume_types_clear_cache
           report_fields = described_class.reporting_available_fields(model).map(&:second)
           expect(report_fields).to include(volume_1_type_field_cost)
           expect(report_fields).not_to include(volume_2_type_field_cost) # old field
 
           # check existence of new name
+          ChargebackVm.current_volume_types_clear_cache
           report_fields = described_class.reporting_available_fields(model).map(&:second)
           volume_2_type_field_cost = "#{model}-storage_allocated_#{volume_2.volume_type}_cost"
           expect(report_fields).to include(volume_1_type_field_cost)
@@ -62,6 +64,7 @@ describe MiqExpression do
 
           # case: add volume_type
           volume_3
+          ChargebackVm.current_volume_types_clear_cache
           report_fields = described_class.reporting_available_fields(model).map(&:second)
           expect(report_fields).to include(volume_1_type_field_cost)
           expect(report_fields).to include(volume_3_type_field_cost)
@@ -70,6 +73,7 @@ describe MiqExpression do
           volume_2.destroy
           volume_3.destroy
 
+          ChargebackVm.current_volume_types_clear_cache
           report_fields = described_class.reporting_available_fields(model).map(&:second)
           expect(report_fields).to include(volume_1_type_field_cost)
           expect(report_fields).not_to include(volume_2_type_field_cost)
@@ -319,6 +323,37 @@ describe MiqExpression do
     it "generates the SQL for an INCLUDES" do
       sql, * = MiqExpression.new("INCLUDES" => {"field" => "Vm-name", "value" => "foo"}).to_sql
       expect(sql).to eq("\"vms\".\"name\" LIKE '%foo%'")
+    end
+
+    it "generates the SQL for an INCLUDES ANY with expression method" do
+      sql, * = MiqExpression.new("INCLUDES ANY" => {"field" => "Vm-ipaddresses", "value" => "foo"}).to_sql
+      expected_sql = <<-EXPECTED.strip_heredoc.split("\n").join(" ")
+        1 = (SELECT  1
+        FROM "hardwares"
+        INNER JOIN "networks" ON "networks"."hardware_id" = "hardwares"."id"
+        WHERE "hardwares"."vm_or_template_id" = "vms"."id"
+        AND (\"networks\".\"ipaddress\" ILIKE '%foo%' OR \"networks\".\"ipv6address\" ILIKE '%foo%')
+        LIMIT 1)
+      EXPECTED
+      expect(sql).to eq(expected_sql)
+    end
+
+    it "does not generate SQL for an INCLUDES ANY without an expression method" do
+      sql, _, attrs = MiqExpression.new("INCLUDES ANY" => {"field" => "Vm-name", "value" => "foo"}).to_sql
+      expect(sql).to be nil
+      expect(attrs).to eq(:supported_by_sql => false)
+    end
+
+    it "does not generate SQL for an INCLUDES ALL without an expression method" do
+      sql, _, attrs = MiqExpression.new("INCLUDES ALL" => {"field" => "Vm-ipaddresses", "value" => "foo"}).to_sql
+      expect(sql).to be nil
+      expect(attrs).to eq(:supported_by_sql => false)
+    end
+
+    it "does not generate SQL for an INCLUDES ONLY without an expression method" do
+      sql, _, attrs = MiqExpression.new("INCLUDES ONLY" => {"field" => "Vm-ipaddresses", "value" => "foo"}).to_sql
+      expect(sql).to be nil
+      expect(attrs).to eq(:supported_by_sql => false)
     end
 
     it "generates the SQL for an AND expression" do
@@ -3339,6 +3374,23 @@ describe MiqExpression do
       )
       actual = described_class.tag_details(nil, {})
       expect(actual).to eq([["My Company Tags : Environment", "managed-env"]])
+    end
+
+    it "returns the added classification when no_cache option is used" do
+      Tenant.seed
+      FactoryGirl.create(:classification,
+                         :name        => "first_classification",
+                         :description => "First Classification",
+                         :children    => [FactoryGirl.create(:classification)])
+      actual = described_class.tag_details(nil, {})
+      expect(actual).to eq([["My Company Tags : First Classification", "managed-first_classification"]])
+
+      FactoryGirl.create(:classification,
+                         :name        => "second_classification",
+                         :description => "Second Classification",
+                         :children    => [FactoryGirl.create(:classification)])
+      actual = described_class.tag_details(nil, :no_cache => true)
+      expect(actual).to eq([["My Company Tags : First Classification", "managed-first_classification"], ["My Company Tags : Second Classification", "managed-second_classification"]])
     end
   end
 

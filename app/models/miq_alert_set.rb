@@ -5,6 +5,8 @@ class MiqAlertSet < ApplicationRecord
 
   include AssignmentMixin
 
+  virtual_has_one :get_assigned_tos
+
   def self.assigned_to_target(target, options = {})
     get_assigned_for_target(target, options)
   end
@@ -47,6 +49,10 @@ class MiqAlertSet < ApplicationRecord
     fixture_file = File.join(FIXTURE_DIR, "miq_alert_sets.yml")
     return unless File.exist?(fixture_file)
     File.open(fixture_file) { |fd| MiqAlertSet.import_from_yaml(fd, :save => true) }
+  end
+
+  def self.display_name(number = 1)
+    n_('Alert Profile', 'Alert Profiles', number)
   end
 
   private

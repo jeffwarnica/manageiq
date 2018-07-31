@@ -10,8 +10,6 @@ module Metric::CiMixin::Capture
       self
     elsif respond_to?(:ext_management_system) && ext_management_system.present?
       ext_management_system
-    elsif respond_to?(:old_ext_management_system) && old_ext_management_system.present?
-      old_ext_management_system
     end
   end
 
@@ -87,6 +85,8 @@ module Metric::CiMixin::Capture
       queue_item_options[:args] = start_and_end_time if start_and_end_time.present?
       next if item_interval != 'realtime' && messages[start_and_end_time].try(:priority) == priority
       MiqQueue.put_or_update(queue_item_options) do |msg, qi|
+        # reason for setting MiqQueue#miq_task_id is to initializes MiqTask.started_on column when message delivered.
+        qi[:miq_task_id] = task_id if task_id
         if msg.nil?
           qi[:priority] = priority
           qi.delete(:state)

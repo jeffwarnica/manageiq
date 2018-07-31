@@ -42,7 +42,8 @@ class OrchestrationTemplate < ApplicationRecord
         create!(hash.except(:md5)) # always create a new template if it is a draft
         true
       else
-        md5s << calc_md5(with_universal_newline(hash[:content]))
+        klass = hash[:type].present? ? hash[:type].constantize : self
+        md5s << klass.calc_md5(with_universal_newline(hash[:content]))
         false
       end
     end
@@ -83,6 +84,16 @@ class OrchestrationTemplate < ApplicationRecord
   # Find all not in use thus editable templates
   def self.not_in_use
     includes(:stacks).where(:orchestration_stacks => {:orchestration_template_id => nil})
+  end
+
+  def tabs
+    [
+      {
+        :title        => "Basic Information",
+        :stack_group  => deployment_options,
+        :param_groups => parameter_groups
+      }
+    ]
   end
 
   def parameter_groups

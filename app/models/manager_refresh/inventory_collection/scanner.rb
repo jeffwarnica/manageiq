@@ -6,7 +6,7 @@ module ManagerRefresh
         # themselves. Dependencies are needed for building a graph, references are needed for effective DB querying, where
         # we can load all referenced objects of some InventoryCollection by one DB query.
         #
-        # @param inventory_collections [Array] Array fo
+        # @param inventory_collections [Array<ManagerRefresh::InventoryCollection>] Array of InventoryCollection objects
         def scan!(inventory_collections)
           indexed_inventory_collections = inventory_collections.index_by(&:name)
 
@@ -41,11 +41,10 @@ module ManagerRefresh
       delegate :attribute_references,
                :data_collection_finalized=,
                :dependency_attributes,
-               :manager_uuids,
+               :targeted_scope,
                :parent_inventory_collections,
                :parent_inventory_collections=,
                :references,
-               :skeletal_manager_uuids,
                :transitive_dependency_attributes,
                :to => :inventory_collection
 
@@ -61,8 +60,7 @@ module ManagerRefresh
 
           if targeted? && parent_inventory_collections.blank?
             # We want to track what manager_uuids we should query from a db, for the targeted refresh
-            manager_uuid = inventory_object.manager_uuid
-            manager_uuids << manager_uuid if manager_uuid
+            targeted_scope << inventory_object.reference
           end
         end
 
@@ -103,30 +101,9 @@ module ManagerRefresh
         # Storing attributes and their dependencies
         (dependency_attributes[key] ||= Set.new) << value_inventory_collection if value.dependency?
 
-        # For concurrent safe strategies, we want to pre-build the relations using the lazy_link data, so we can fill up
-        # the foreign key in first pass.
-        if [:concurrent_safe, :concurrent_safe_batch].include?(saver_strategy)
-          # TODO(lsmola) manager_ref.size == 1, we can support any size
-          if value_inventory_collection.manager_ref.size == 1 && inventory_object_lazy?(value) &&
-             !value.ems_ref.blank? && value.key.nil? && value.dependency?
-            # Instead of loading the reference from the DB, we'll add the dummy InventoryObject (having only ems_ref and
-            # info from the builder_params) to the correct InventoryCollection. Which will either be found in the DB or
-            # created as a small dummy object. The refresh of the object will then fill the rest of the data, while not
-            # touching the reference.
-
-            # TODO(lsmola) solve the :key, since that requires data from the actual reference. At best our DB should be
-            # designed the way, we don't duplicate the data, but rather get them with a join. (3NF!)
-
-            if value.ems_ref
-              value_inventory_collection.find_or_build(value.ems_ref)
-              value_inventory_collection.skeletal_manager_uuids << value.ems_ref
-            end
-          end
-        end
-
         # Storing a reference in the target inventory_collection, then each IC knows about all the references and can
         # e.g. load all the referenced uuids from a DB
-        value_inventory_collection.add_reference(value.reference, :key => value.try(:key))
+        value_inventory_collection.add_reference(value.reference, :key => value.key)
 
         if inventory_object_lazy?(value)
           # Storing if attribute is a transitive dependency, so a lazy_find :key results in dependency

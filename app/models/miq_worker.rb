@@ -1,6 +1,7 @@
 require 'io/wait'
 
 class MiqWorker < ApplicationRecord
+  include_concern 'ContainerCommon'
   include UuidMixin
 
   before_destroy :log_destroy_of_worker_messages
@@ -251,18 +252,22 @@ class MiqWorker < ApplicationRecord
     find_current.each { |w| w.log_status(level) }
   end
 
-  def self.create_worker_record(*params)
+  def self.init_worker_object(*params)
     params                  = params.first
     params                  = {} unless params.kind_of?(Hash)
     params[:queue_name]     = default_queue_name unless params.key?(:queue_name) || default_queue_name.nil?
     params[:status]         = STATUS_CREATING
     params[:last_heartbeat] = Time.now.utc
 
-    server_scope.create(params)
+    server_scope.new(params)
+  end
+
+  def self.create_worker_record(*params)
+    init_worker_object(*params).tap(&:save)
   end
 
   def self.start_worker(*params)
-    w = create_worker_record(*params)
+    w = containerized_worker? ? init_worker_object(*params) : create_worker_record(*params)
     w.start
     w
   end
@@ -314,7 +319,9 @@ class MiqWorker < ApplicationRecord
   def self.after_fork
     close_pg_sockets_inherited_from_parent
     DRb.stop_service
+    close_drb_pool_connections
     renice(Process.pid)
+    CodeCoverage.run_hook
   end
 
   # When we fork, the children inherits the parent's file descriptors
@@ -330,6 +337,24 @@ class MiqWorker < ApplicationRecord
     end
   end
 
+  # Close all open DRb connections so that connections in the parent's memory space
+  # which is shared due to forking the child process do not pollute the child's DRb
+  # connection pool.  This can lead to errors when the children connect to a server
+  # and get an incorrect response back.
+  #
+  # ref: https://bugs.ruby-lang.org/issues/2718
+  def self.close_drb_pool_connections
+    require 'drb'
+
+    # HACK: DRb doesn't provide an interface to close open pool connections.
+    #
+    # Once that is added this should be replaced.
+    DRb::DRbConn.instance_variable_get(:@mutex).synchronize do
+      DRb::DRbConn.instance_variable_get(:@pool).each(&:close)
+      DRb::DRbConn.instance_variable_set(:@pool, [])
+    end
+  end
+
   # Overriding queue_name as now some queue names can be
   # arrays of names for some workers not just a singular name.
   # We use JSON.parse as the array of names is stored as a string.
@@ -342,12 +367,32 @@ class MiqWorker < ApplicationRecord
     end
   end
 
+  def self.supports_container?
+    false
+  end
+
+  def self.containerized_worker?
+    # un-rearch containers for Hammer
+    return false
+    MiqEnvironment::Command.is_podified? && supports_container?
+  end
+
+  def containerized_worker?
+    self.class.containerized_worker?
+  end
+
   def start_runner
     if ENV['MIQ_SPAWN_WORKERS'] || !Process.respond_to?(:fork)
       start_runner_via_spawn
+    elsif containerized_worker?
+      start_runner_via_container
     else
       start_runner_via_fork
     end
+  end
+
+  def start_runner_via_container
+    create_container_objects
   end
 
   def start_runner_via_fork
@@ -394,10 +439,10 @@ class MiqWorker < ApplicationRecord
 
   def start
     self.pid = start_runner
-    save
+    save unless containerized_worker?
 
     msg = "Worker started: ID [#{id}], PID [#{pid}], GUID [#{guid}]"
-    MiqEvent.raise_evm_event_queue(miq_server, "evm_worker_start", :event_details => msg, :type => self.class.name)
+    MiqEvent.raise_evm_event_queue(miq_server || MiqServer.my_server, "evm_worker_start", :event_details => msg, :type => self.class.name)
 
     _log.info(msg)
     self
@@ -588,5 +633,10 @@ class MiqWorker < ApplicationRecord
     delta = worker_settings[:nice_delta]
     delta.kind_of?(Integer) ? delta.to_s : "+10"
   end
+
+  def self.display_name(number = 1)
+    n_('Worker', 'Workers', number)
+  end
+
   private_class_method :nice_increment
 end

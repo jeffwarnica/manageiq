@@ -2,28 +2,31 @@ class ServiceTemplate < ApplicationRecord
   DEFAULT_PROCESS_DELAY_BETWEEN_GROUPS = 120
 
   GENERIC_ITEM_SUBTYPES = {
-    "custom"          => _("Custom"),
-    "vm"              => _("Virtual Machine"),
-    "playbook"        => _("Playbook"),
-    "hosted_database" => _("Hosted Database"),
-    "load_balancer"   => _("Load Balancer"),
-    "storage"         => _("Storage")
+    "custom"          => N_("Custom"),
+    "vm"              => N_("Virtual Machine"),
+    "playbook"        => N_("Playbook"),
+    "hosted_database" => N_("Hosted Database"),
+    "load_balancer"   => N_("Load Balancer"),
+    "storage"         => N_("Storage")
   }.freeze
 
   CATALOG_ITEM_TYPES = {
-    "amazon"                     => _("Amazon"),
-    "azure"                      => _("Azure"),
-    "generic"                    => _("Generic"),
-    "generic_orchestration"      => _("Orchestration"),
-    "generic_ansible_playbook"   => _("Ansible Playbook"),
-    "generic_ansible_tower"      => _("Ansible Tower"),
-    "generic_container_template" => _("OpenShift Template"),
-    "google"                     => _("Google"),
-    "microsoft"                  => _("SCVMM"),
-    "openstack"                  => _("OpenStack"),
-    "redhat"                     => _("Red Hat Virtualization"),
-    "vmware"                     => _("VMware")
+    "amazon"                     => N_("Amazon"),
+    "azure"                      => N_("Azure"),
+    "generic"                    => N_("Generic"),
+    "generic_orchestration"      => N_("Orchestration"),
+    "generic_ansible_playbook"   => N_("Ansible Playbook"),
+    "generic_ansible_tower"      => N_("Ansible Tower"),
+    "generic_container_template" => N_("OpenShift Template"),
+    "google"                     => N_("Google"),
+    "microsoft"                  => N_("SCVMM"),
+    "openstack"                  => N_("OpenStack"),
+    "redhat"                     => N_("Red Hat Virtualization"),
+    "vmware"                     => N_("VMware")
   }.freeze
+
+  SERVICE_TYPE_ATOMIC    = 'atomic'.freeze
+  SERVICE_TYPE_COMPOSITE = 'composite'.freeze
 
   RESOURCE_ACTION_UPDATE_ATTRS = [:dialog,
                                   :dialog_id,
@@ -37,6 +40,7 @@ class ServiceTemplate < ApplicationRecord
   include OwnershipMixin
   include NewWithTypeStiMixin
   include TenancyMixin
+  include ArchivedMixin
   include_concern 'Filter'
 
   belongs_to :tenant
@@ -55,11 +59,16 @@ class ServiceTemplate < ApplicationRecord
 
   has_many   :dialogs, -> { distinct }, :through => :resource_actions
 
+  has_many   :miq_requests, :as => :source, :dependent => :nullify
+  has_many   :active_requests, -> { where(:request_state => MiqRequest::ACTIVE_STATES) }, :as => :source, :class_name => "MiqRequest"
+
   virtual_column   :type_display,                 :type => :string
   virtual_column   :template_valid,               :type => :boolean
   virtual_column   :template_valid_error_message, :type => :string
+  virtual_column   :archived,                     :type => :boolean
+  virtual_column   :active,                       :type => :boolean
 
-  default_value_for :service_type, 'unknown'
+  default_value_for :service_type, SERVICE_TYPE_ATOMIC
   default_value_for(:generic_subtype) { |st| 'custom' if st.prov_type == 'generic' }
 
   virtual_has_one :config_info, :class_name => "Hash"
@@ -149,6 +158,11 @@ class ServiceTemplate < ApplicationRecord
     super
   end
 
+  def archive
+    raise _("Cannot archive while in use") unless active_requests.empty?
+    archive!
+  end
+
   def request_class
     ServiceTemplateProvisionRequest
   end
@@ -195,37 +209,19 @@ class ServiceTemplate < ApplicationRecord
     svc
   end
 
-  def set_service_type
-    svc_type = nil
-
-    if service_resources.size.zero?
-      svc_type = 'unknown'
-    else
-      service_resources.each do |sr|
-        if sr.resource_type == 'Service' || sr.resource_type == 'ServiceTemplate'
-          svc_type = 'composite'
-          break
-        end
-      end
-      svc_type = 'atomic' if svc_type.blank?
-    end
-
-    self.service_type = svc_type
-  end
-
   def composite?
-    service_type.to_s.include?('composite')
+    service_type.to_s.include?(self.class::SERVICE_TYPE_COMPOSITE)
   end
 
   def atomic?
-    service_type.to_s.include?('atomic')
+    service_type.to_s.include?(self.class::SERVICE_TYPE_ATOMIC)
   end
 
   def type_display
     case service_type
-    when "atomic"    then "Item"
-    when "composite" then "Bundle"
-    when nil         then "Unknown"
+    when self.class::SERVICE_TYPE_ATOMIC    then "Item"
+    when self.class::SERVICE_TYPE_COMPOSITE then "Bundle"
+    when nil                                then "Unknown"
     else
       service_type.to_s.capitalize
     end
@@ -381,25 +377,74 @@ class ServiceTemplate < ApplicationRecord
   private_class_method :create_from_options
 
   def provision_request(user, options = nil, request_options = nil)
-    result = provision_workflow(user, options, request_options).submit_request
+    result = order(user, options, request_options)
     raise result[:errors].join(", ") if result[:errors].any?
     result[:request]
+  end
+
+  def queue_order(user_id, options, request_options)
+    MiqQueue.submit_job(
+      :class_name  => self.class.name,
+      :instance_id => id,
+      :method_name => "order",
+      :args        => [user_id, options, request_options],
+    )
+  end
+
+  def miq_schedules
+    schedule_ids = Reserve.where(:resource_type => "MiqSchedule").collect { |r| r.resource_id if r.reserved == {:resource_id => id} }.compact
+    MiqSchedule.where(:towhat => "ServiceTemplate", :id => schedule_ids)
+  end
+
+  def order(user_or_id, options = nil, request_options = nil, schedule_time = nil)
+    user     = user_or_id.kind_of?(User) ? user_or_id : User.find(user_or_id)
+    workflow = provision_workflow(user, options, request_options)
+    if schedule_time
+      require 'time'
+      time = Time.parse(schedule_time).utc
+
+      errors = workflow.validate_dialog
+      return {:errors => errors} unless errors.blank?
+
+      schedule = MiqSchedule.create!(
+        :name         => "Order #{self.class.name} #{id} at #{time}",
+        :description  => "Order #{self.class.name} #{id} at #{time}",
+        :sched_action => {:args => [user.id, options, request_options], :method => "queue_order"},
+        :resource_id  => id,
+        :towhat       => "ServiceTemplate",
+        :run_at       => {
+          :interval   => {:unit => "once"},
+          :start_time => time,
+          :tz         => "UTC",
+        },
+      )
+      {:schedule => schedule}
+    else
+      workflow.submit_request
+    end
   end
 
   def provision_workflow(user, dialog_options = nil, request_options = nil)
     dialog_options ||= {}
     request_options ||= {}
-    ra_options = { :target => self, :initiator => request_options[:initiator] }
-    ResourceActionWorkflow.new({}, user,
-                               provision_action, ra_options).tap do |wf|
+    ra_options = {
+      :target          => self,
+      :initiator       => request_options[:initiator],
+      :submit_workflow => request_options[:submit_workflow]
+    }
+
+    ResourceActionWorkflow.new(dialog_options, user, provision_action, ra_options).tap do |wf|
       wf.request_options = request_options
-      dialog_options.each { |key, value| wf.set_value(key, value) }
     end
   end
 
   def add_resource(rsc, options = {})
     super
-    set_service_type
+    adjust_service_type
+  end
+
+  def self.display_name(number = 1)
+    n_('Service Catalog Item', 'Service Catalog Items', number)
   end
 
   private
@@ -416,11 +461,7 @@ class ServiceTemplate < ApplicationRecord
   end
 
   def build_resource_action(ae_endpoint, action)
-    fqname = if ae_endpoint.empty?
-               self.class.send(action[:method], *action[:args]) || ""
-             else
-               ae_endpoint[:fqname]
-             end
+    fqname = ae_endpoint[:fqname] || self.class.send(action[:method], *action[:args]) || ""
 
     build_options = {:action        => action[:name],
                      :fqname        => fqname,
@@ -484,5 +525,17 @@ class ServiceTemplate < ApplicationRecord
 
   def generic_custom_buttons
     CustomButton.buttons_for("Service")
+  end
+
+  def adjust_service_type
+    svc_type = self.class::SERVICE_TYPE_ATOMIC
+    service_resources.try(:each) do |sr|
+      if sr.resource_type == 'Service' || sr.resource_type == 'ServiceTemplate'
+        svc_type = self.class::SERVICE_TYPE_COMPOSITE
+        break
+      end
+    end
+
+    self.service_type = svc_type
   end
 end

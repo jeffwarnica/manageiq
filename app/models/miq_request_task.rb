@@ -94,8 +94,6 @@ class MiqRequestTask < ApplicationRecord
   def self.request_class
     if self <= MiqProvision
       MiqProvisionRequest
-    elsif self <= MiqHostProvision
-      MiqHostProvisionRequest
     else
       name.underscore.gsub(/_task$/, "_request").camelize.constantize
     end
@@ -146,7 +144,7 @@ class MiqRequestTask < ApplicationRecord
         :args           => [args],
         :role           => 'automate',
         :zone           => options.fetch(:miq_zone, zone),
-        :tracking_label => my_task_id,
+        :tracking_label => tracking_label_id,
       )
       update_and_notify_parent(:state => "pending", :status => "Ok",  :message => "Automation Starting")
     else
@@ -172,7 +170,7 @@ class MiqRequestTask < ApplicationRecord
       :method_name    => "execute",
       :zone           => options.fetch(:miq_zone, zone),
       :role           => miq_request.my_role,
-      :tracking_label => my_task_id,
+      :tracking_label => tracking_label_id,
       :deliver_on     => deliver_on,
       :miq_callback   => {:class_name => self.class.name, :instance_id => id, :method_name => :execute_callback}
     )
@@ -200,6 +198,18 @@ class MiqRequestTask < ApplicationRecord
       update_and_notify_parent(:state => "finished", :status => "Error", :message => message)
       return
     end
+  end
+
+  def self.display_name(number = 1)
+    n_('Request Task', 'Request Tasks', number)
+  end
+
+  def cancel
+    raise _("Cancel operation is not supported for #{self.class.name}")
+  end
+
+  def canceling?
+    false
   end
 
   private

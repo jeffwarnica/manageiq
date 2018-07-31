@@ -1,7 +1,7 @@
 # encoding: US-ASCII
 
 describe MiqLdap do
-  before(:each) do
+  before do
     @host     = 'mycompany.com'
 
     # TODO: Use an actual user so this test actually tests something in the CI server
@@ -120,19 +120,133 @@ describe MiqLdap do
     expect(MiqLdap.sid_to_s(data)).to eq("S-1-5-21-4106323499-3255682937-2389761597-1183")
   end
 
-  it 'returns a hostname when a hostname is availble and does not set verify mode' do
-    allow(TCPSocket).to receive(:gethostbyname).and_return(["testhostname", "aliases", "type", "192.168.252.20"])
-    allow(TCPSocket).to receive(:new)
-    ldap = MiqLdap.new(:host => ["testhostname", "localhost", "dummy", @host])
-    expect(ldap.ldap.host).to eq("testhostname")
-    expect(ldap.ldap.instance_variable_get(:@encryption).try(:has_key_path?, :tls_options, :verify_mode)).to be_falsey
+  context 'when a hostname is available' do
+    before do
+      allow(TCPSocket).to receive(:gethostbyname).and_return(["testhostname", "aliases", "type", "192.168.252.20"])
+      allow(TCPSocket).to receive(:new)
+    end
+
+    it 'when mode is ldaps returns a hostname and does not set verify_mode' do
+      ldap = MiqLdap.new(:mode => "ldaps", :host => ["testhostname", "localhost", "dummy", @host])
+      expect(ldap.ldap.host).to eq("testhostname")
+      expect(ldap.ldap.instance_variable_get(:@encryption).try(:has_key_path?, :tls_options, :verify_mode)).to be_falsey
+    end
+
+    it 'when mode is ldap returns a hostname and does not set encryption options' do
+      ldap = MiqLdap.new(:mode => "ldap", :host => ["testhostname", "localhost", "dummy", @host])
+      expect(ldap.ldap.host).to eq("testhostname")
+      expect(ldap.ldap.instance_variable_get(:@encryption)).to be_nil
+    end
   end
 
-  it 'returns an IPAddress and disables verify mode when only an IPAddress is availble' do
-    expect(TCPSocket).not_to receive(:gethostbyname)
-    allow(TCPSocket).to receive(:new)
-    ldap = MiqLdap.new(:host => ["192.168.254.15", "localhost", "dummy", @host])
-    expect(ldap.ldap.host).to eq("192.168.254.15")
-    expect(ldap.ldap.instance_variable_get(:@encryption).fetch_path(:tls_options, :verify_mode)).to eq(OpenSSL::SSL::VERIFY_NONE)
+  context 'when only an IPAddress is available' do
+    before do
+      expect(TCPSocket).not_to receive(:gethostbyname)
+      allow(TCPSocket).to receive(:new)
+    end
+
+    it 'when mode is ldaps returns an IPAddress and disables verify_mode' do
+      ldap = MiqLdap.new(:mode => "ldaps", :host => ["192.168.254.15", "localhost", "dummy", @host])
+      expect(ldap.ldap.host).to eq("192.168.254.15")
+      expect(ldap.ldap.instance_variable_get(:@encryption).fetch_path(:tls_options, :verify_mode)).to eq(OpenSSL::SSL::VERIFY_NONE)
+    end
+
+    it 'when mode is ldap returns an IPAddress and does not set encryption options' do
+      ldap = MiqLdap.new(:mode => "ldap", :host => ["192.168.254.15", "localhost", "dummy", @host])
+      expect(ldap.ldap.host).to eq("192.168.254.15")
+      expect(ldap.ldap.instance_variable_get(:@encryption)).to be_nil
+    end
+  end
+
+  context '#get_user_object' do
+    before do
+      allow(TCPSocket).to receive(:new)
+      @opts = {:base => nil, :scope => :sub, :filter => "(userprincipalname=myuserid@mycompany.com)"}
+    end
+
+    it "searches for group memberships with the specified group attribute" do
+      ldap = MiqLdap.new(:host => ["192.0.2.2"], :group_attribute => "groupMembership")
+      @opts[:attributes] = ["*", "groupMembership"]
+      expect(ldap).to receive(:search).with(@opts)
+
+      ldap.get_user_object("myuserid@mycompany.com", "upn")
+    end
+
+    it "searches for group memberships with the default group attribute" do
+      ldap = MiqLdap.new(:host => ["192.0.2.2"])
+      @opts[:attributes] = ["*", "memberof"]
+      expect(ldap).to receive(:search).with(@opts)
+
+      ldap.get_user_object("myuserid@mycompany.com", "upn")
+    end
+
+    it "searches for group membership when username is upn regardless of user_type" do
+      ldap = MiqLdap.new(:host => ["192.0.2.2"])
+      @opts[:attributes] = ["*", "memberof"]
+      expect(ldap).to receive(:search).with(@opts)
+
+      ldap.get_user_object("myuserid@mycompany.com", "bad_user_type")
+    end
+  end
+
+  context "#fqusername" do
+    before do
+      allow(TCPSocket).to receive(:new)
+      @opts = {:host => ["192.0.2.2"], :user_suffix => 'mycompany.com', :domain_prefix => 'my\domain'}
+    end
+
+    it "returns username when username is already a dn" do
+      ldap = MiqLdap.new(@opts)
+      expect(ldap.fqusername("cn=myuser,ou=people,ou=prod,dc=example,dc=com")).to eq("cn=myuser,ou=people,ou=prod,dc=example,dc=com")
+    end
+
+    it "returns username when username is a dn with an @ in the dn" do
+      ldap = MiqLdap.new(@opts)
+      expect(ldap.fqusername("cn=my@user,ou=people,ou=prod,dc=example,dc=com")).to eq("cn=my@user,ou=people,ou=prod,dc=example,dc=com")
+    end
+
+    it "returns a constructed dn when user type is a dn" do
+      @opts[:user_type] = 'dn'
+      ldap = MiqLdap.new(@opts)
+      expect(ldap.fqusername("myuser")).to eq("cn=myuser,mycompany.com")
+    end
+
+    it "returns username when username is already a upn" do
+      ldap = MiqLdap.new(@opts)
+      expect(ldap.fqusername("myuserid@mycompany.com")).to eq("myuserid@mycompany.com")
+    end
+
+    it "returns username when username is already a domain username" do
+      ldap = MiqLdap.new(@opts)
+      expect(ldap.fqusername('my\domain\myuserid')).to eq('my\domain\myuserid')
+    end
+
+    it "returns username when username is already a upn even if user_type is samaccountname" do
+      @opts[:user_type]   = 'samaccountname'
+      @opts[:user_suffix] = 'not_mycompany.com'
+      ldap = MiqLdap.new(@opts)
+      expect(ldap.fqusername("myuserid@mycompany.com")).to eq("myuserid@mycompany.com")
+    end
+
+    it "returns upn when user_type is upn" do
+      @opts[:user_type]   = 'userprincipalname'
+      @opts[:user_suffix] = 'mycompany.com'
+      ldap = MiqLdap.new(@opts)
+      expect(ldap.fqusername("myuserid")).to eq("myuserid@mycompany.com")
+    end
+
+    it "returns samaccountname when user_type is samaccountname" do
+      @opts[:user_type] = 'samaccountname'
+      ldap = MiqLdap.new(@opts)
+      expect(ldap.fqusername('myuserid')).to eq('my\domain\myuserid')
+    end
+
+    it "searches for username when user_type is mail even when username is UPN" do
+      @opts[:user_type] = 'mail'
+      ldap = MiqLdap.new(@opts)
+      expect(User).to receive(:find_by_email)
+      expect(User).to receive(:find_by_userid)
+      expect(ldap.fqusername('myuserid@mycompany.com')).to eq('myuserid@mycompany.com')
+    end
   end
 end

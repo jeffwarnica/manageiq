@@ -19,6 +19,8 @@ class MiqServer < ApplicationRecord
   acts_as_miq_taggable
   include RelationshipMixin
 
+  alias_attribute :description, :name
+
   belongs_to              :vm, :inverse_of => :miq_server
   belongs_to              :zone
   has_many                :messages,  :as => :handler, :class_name => 'MiqQueue'
@@ -29,9 +31,13 @@ class MiqServer < ApplicationRecord
   before_destroy          :validate_is_deleteable
   after_destroy           :destroy_linked_events_queue
 
-  virtual_column :zone_description, :type => :string
+  default_value_for(:name, "EVM")
+  default_value_for(:zone) { Zone.default_zone }
 
+  scope :active_miq_servers, -> { where(:status => STATUSES_ACTIVE) }
+  scope :recently_active,    -> { where(:last_heartbeat => 10.minutes.ago.utc...Time.now.utc) }
   scope :with_zone_id, ->(zone_id) { where(:zone_id => zone_id) }
+  virtual_delegate :description, :to => :zone, :prefix => true
 
   STATUS_STARTING       = 'starting'.freeze
   STATUS_STARTED        = 'started'.freeze
@@ -46,10 +52,6 @@ class MiqServer < ApplicationRecord
   STATUSES_ALIVE   = STATUSES_ACTIVE + [STATUS_RESTARTING, STATUS_QUIESCE]
 
   RESTART_EXIT_STATUS = 123
-
-  def self.active_miq_servers
-    where(:status => STATUSES_ACTIVE)
-  end
 
   def hostname
     h = super
@@ -248,8 +250,7 @@ class MiqServer < ApplicationRecord
 
   def validate_is_deleteable
     unless self.is_deleteable?
-      _log.error(@error_message)
-      @error_message = nil
+      _log.error(@errors.full_messages)
       throw :abort
     end
   end
@@ -491,21 +492,21 @@ class MiqServer < ApplicationRecord
 
   def is_deleteable?
     if self.is_local?
-      @error_message = N_("Cannot delete currently used %{log_message}") % {:log_message => format_short_log_msg}
+      message = N_("Cannot delete currently used %{log_message}") % {:log_message => format_short_log_msg}
+      @errors ||= ActiveModel::Errors.new(self)
+      @errors.add(:base, message)
       return false
     end
     return true if self.stopped?
 
     if is_recently_active?
-      @error_message = N_("Cannot delete recently active %{log_message}") % {:log_message => format_short_log_msg}
+      message = N_("Cannot delete recently active %{log_message}") % {:log_message => format_short_log_msg}
+      @errors ||= ActiveModel::Errors.new(self)
+      @errors.add(:base, message)
       return false
     end
 
     true
-  end
-
-  def state
-    "on"
   end
 
   def started?
@@ -556,10 +557,6 @@ class MiqServer < ApplicationRecord
     my_server(force_reload).my_zone
   end
 
-  def zone_description
-    zone.try(:description)
-  end
-
   def self.my_roles(force_reload = false)
     my_server(force_reload).my_roles
   end
@@ -588,33 +585,20 @@ class MiqServer < ApplicationRecord
     my_zone == zone_name
   end
 
-  CONDITION_CURRENT = {:status => ["starting", "started"]}
-  def self.find_started_in_my_region
-    in_my_region.where(CONDITION_CURRENT)
-  end
-
-  def self.find_all_started_servers
-    where(CONDITION_CURRENT)
-  end
-
   def find_other_started_servers_in_region
-    MiqRegion.my_region.active_miq_servers.to_a.delete_if { |s| s.id == id }
+    self.class.active_miq_servers.in_my_region.where.not(:id => id).to_a
   end
 
   def find_other_servers_in_region
-    MiqRegion.my_region.miq_servers.to_a.delete_if { |s| s.id == id }
+    self.class.active_miq_servers.where.not(:id => id).to_a
   end
 
   def find_other_started_servers_in_zone
-    zone.active_miq_servers.to_a.delete_if { |s| s.id == id }
+    self.class.active_miq_servers.where(:zone_id => zone_id).where.not(:id => id).to_a
   end
 
   def find_other_servers_in_zone
-    zone.miq_servers.to_a.delete_if { |s| s.id == id }
-  end
-
-  def log_prefix
-    @log_prefix ||= "MIQ(#{self.class.name})"
+    self.class.where(:zone_id => zone_id).where.not(:id => id).to_a
   end
 
   def display_name
@@ -631,5 +615,9 @@ class MiqServer < ApplicationRecord
 
   def miq_region
     ::MiqRegion.my_region
+  end
+
+  def self.display_name(number = 1)
+    n_('Server', 'Servers', number)
   end
 end # class MiqServer

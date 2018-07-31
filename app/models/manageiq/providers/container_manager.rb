@@ -14,10 +14,10 @@ module ManageIQ::Providers
     has_many :container_replicators, :foreign_key => :ems_id, :dependent => :destroy
     has_many :containers, -> { active }, :foreign_key => :ems_id
     has_many :container_projects, -> { active }, :foreign_key => :ems_id
-    has_many :container_quotas, :foreign_key => :ems_id, :dependent => :destroy
+    has_many :container_quotas, -> { active }, :foreign_key => :ems_id
     has_many :container_limits, :foreign_key => :ems_id, :dependent => :destroy
     has_many :container_image_registries, :foreign_key => :ems_id, :dependent => :destroy
-    has_many :container_images, -> { active }, :foreign_key => :ems_id
+    has_many :container_images, -> { active }, :foreign_key => :ems_id, :dependent => :destroy
     has_many :persistent_volumes, :as => :parent, :dependent => :destroy
     has_many :persistent_volume_claims, :foreign_key => :ems_id, :dependent => :destroy
     has_many :container_builds, :foreign_key => :ems_id, :dependent => :destroy
@@ -46,6 +46,7 @@ module ManageIQ::Providers
     has_many :all_container_projects, :foreign_key => :ems_id, :dependent => :destroy, :class_name => "ContainerProject"
     has_many :all_container_images, :foreign_key => :ems_id, :dependent => :destroy, :class_name => "ContainerImage"
     has_many :all_container_nodes, :foreign_key => :ems_id, :dependent => :destroy, :class_name => "ContainerNode"
+    has_many :all_container_quotas, :foreign_key => :ems_id, :dependent => :destroy, :class_name => "ContainerQuota"
 
     has_one :infra_manager,
             :foreign_key => :parent_ems_id,
@@ -108,5 +109,9 @@ module ManageIQ::Providers
       monitoring_endpoint_destroyed(role) if respond_to?(:monitoring_endpoint_destroyed)
       virtualization_endpoint_destroyed(role) if respond_to?(:virtualization_endpoint_destroyed)
     end
+  end
+
+  def self.display_name(number = 1)
+    n_('Containers Manager', 'Containers Managers', number)
   end
 end

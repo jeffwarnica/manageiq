@@ -1,17 +1,21 @@
 class DialogFieldSortedItem < DialogField
   AUTOMATE_VALUE_FIELDS = %w(sort_by sort_order data_type default_value required read_only visible description).freeze
 
-  def initialize_with_values(dialog_values)
+  def initialize_value_context
     if load_values_on_init?
       raw_values
-      @value = value_from_dialog_fields(dialog_values) || default_value_if_included
     else
       @raw_values = initial_values
     end
   end
 
+  def initialize_with_given_value(given_value)
+    raw_values
+    self.default_value = given_value
+  end
+
   def sort_by
-    options[:sort_by] || :description
+    options[:sort_by].try(:to_sym) || :description
   end
 
   def sort_by=(value)
@@ -34,6 +38,10 @@ class DialogFieldSortedItem < DialogField
 
   def values
     raw_values
+  end
+
+  def extract_dynamic_values
+    @raw_values
   end
 
   def get_default_value
@@ -75,6 +83,11 @@ class DialogFieldSortedItem < DialogField
     {:refreshed_values => refreshed_values, :checked_value => @value, :read_only => read_only?, :visible => visible?}
   end
 
+  def force_multi_value
+    # override in subclasses
+    nil
+  end
+
   private
 
   def add_nil_option
@@ -95,7 +108,7 @@ class DialogFieldSortedItem < DialogField
     data_to_sort
   end
 
-  def determine_selected_default_value
+  def determine_selected_value
     use_first_value_as_default unless default_value_included?(@raw_values)
     self.value ||= default_value.nil? && data_type == "integer" ? nil : default_value.send(value_modifier)
   end
@@ -105,7 +118,7 @@ class DialogFieldSortedItem < DialogField
     reject_extraneous_nil_values unless dynamic?
     @raw_values = sort_data(@raw_values)
     add_nil_option unless dynamic?
-    determine_selected_default_value
+    determine_selected_value
     @raw_values
   end
 

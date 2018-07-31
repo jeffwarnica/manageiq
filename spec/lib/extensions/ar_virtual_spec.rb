@@ -1,6 +1,6 @@
 describe VirtualFields do
   context "TestClass" do
-    before(:each) do
+    before do
       class TestClassBase < ActiveRecord::Base
         self.abstract_class = true
 
@@ -35,7 +35,7 @@ describe VirtualFields do
       end
     end
 
-    after(:each) do
+    after do
       TestClassBase.remove_connection
       Object.send(:remove_const, :TestClass)
       Object.send(:remove_const, :TestClassBase)
@@ -222,7 +222,7 @@ describe VirtualFields do
     end
 
     context "with virtual columns" do
-      before(:each) do
+      before do
         TestClass.virtual_column :vcol1, :type => :string
         TestClass.virtual_column :vcol2, :type => :string
 
@@ -240,7 +240,7 @@ describe VirtualFields do
             virtual_column :vcolsub1, :type => :string
           end
         end
-        before(:each) do
+        before do
           test_sub_class
           @vcols_sub_strs = @vcols_strs + ["vcolsub1"]
           @vcols_sub_syms = @vcols_syms + [:vcolsub1]
@@ -438,7 +438,7 @@ describe VirtualFields do
     end
 
     context "with virtual reflections" do
-      before(:each) do
+      before do
         TestClass.virtual_has_one :vref1
         TestClass.virtual_has_one :vref2
 
@@ -456,7 +456,7 @@ describe VirtualFields do
             virtual_has_one :vrefsub1
           end
         end
-        before(:each) do
+        before do
           test_sub_class
           @vrefs_sub_syms = @vrefs_syms + [:vrefsub1]
           @refs_sub_syms  = @vrefs_sub_syms + [:ref1, :ref2]
@@ -468,7 +468,7 @@ describe VirtualFields do
     end
 
     context "with both virtual columns and reflections" do
-      before(:each) do
+      before do
         TestClass.virtual_column  :vcol1, :type => :string
         TestClass.virtual_has_one :vref1
       end
@@ -613,7 +613,7 @@ describe VirtualFields do
       end
 
       context "with relation in foreign table" do
-        before(:each) do
+        before do
           class TestOtherClass < ActiveRecord::Base
             def self.connection
               TestClassBase.connection
@@ -622,11 +622,19 @@ describe VirtualFields do
 
             include VirtualFields
           end
+
+          class CompSys < ComputerSystem
+            has_one :first_os, -> { order(:name) },
+                    :class_name  => "OperatingSystem",
+                    :foreign_key => "computer_system_id",
+                    :dependent   => :destroy
+          end
         end
 
-        after(:each) do
+        after do
           TestOtherClass.remove_connection
           Object.send(:remove_const, :TestOtherClass)
+          Object.send(:remove_const, :CompSys)
         end
 
         it "delegates to another table" do
@@ -643,6 +651,15 @@ describe VirtualFields do
           TestOtherClass.virtual_delegate :col1, :to => :oref1
           sql = TestOtherClass.all.select(:id, :ocol1, TestOtherClass.arel_attribute(:col1).as("x")).to_sql
           expect(sql).to match(/"test_classes"."col1"/i)
+        end
+
+        it "delegates has_one relationships with limit 1" do
+          CompSys.virtual_delegate :first_os_name, :to => 'first_os.name'
+          comp_sys = CompSys.create!
+          OperatingSystem.create(:name => "foo", :computer_system_id => comp_sys.id)
+          OperatingSystem.create(:name => "bar", :computer_system_id => comp_sys.id)
+          query = CompSys.all.select(:id, :first_os_name)
+          expect(query.map(&:first_os_name)).to match_array(["bar"])
         end
       end
     end
@@ -876,7 +893,9 @@ describe VirtualFields do
     # Vms.belongs_to :host
     # Vms.virtual_has_many :processes
     it "stops at virtual reflections" do
-      expect(ExtManagementSystem.collect_reflections(%w(vms processes))).to be_nil
+      expect(ExtManagementSystem.collect_reflections(%w(vms processes))).to eq(
+        [ExtManagementSystem.reflect_on_association(:vms)]
+      )
     end
   end
 
@@ -904,7 +923,7 @@ describe VirtualFields do
   end
 
   context "preloading" do
-    before(:each) do
+    before do
       FactoryGirl.create(:vm_vmware,
                          :hardware         => FactoryGirl.create(:hardware),
                          :operating_system => FactoryGirl.create(:operating_system),

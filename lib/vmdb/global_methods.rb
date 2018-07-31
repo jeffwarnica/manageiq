@@ -73,26 +73,25 @@ module Vmdb
       elsif options[:models]
         Dictionary.gettext(options[:models], :type => :model, :notfound => :titleize, :plural => true)
       elsif options[:ui_title]
-        ui_lookup_for_title(options[:ui_title])
+        Dictionary.gettext(options[:ui_title], :type => :ui_title)
       else
         ''
       end
     end
 
-    def ui_lookup_for_title(text)
-      Dictionary.gettext(text, :type => :ui_title)
-    end
-
     # Wrap a report html table body with html table tags and headers for the columns
-    def report_build_html_table(report, table_body)
+    def report_build_html_table(report, table_body, breakable = true)
       html = ''
-      html << "<table class='table table-striped table-bordered'>"
+      html << "<table class=\"table table-striped table-bordered #{breakable ? '' : 'non-breakable'}\">"
       html << "<thead>"
       html << "<tr>"
 
       # table headings
       unless report.headers.nil?
-        report.headers.each do |h|
+        report.headers.each_with_index do |h, i|
+          col = report.col_order[i]
+          next if report.column_is_hidden?(col)
+
           html << "<th>" << CGI.escapeHTML(_(h.to_s)) << "</th>"
         end
         html << "</tr>"

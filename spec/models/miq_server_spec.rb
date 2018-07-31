@@ -156,6 +156,23 @@ describe MiqServer do
       end
     end
 
+    context "validate_is_deleteable before destroying" do
+      it "prevents deleting the current server" do
+        allow(@miq_server).to receive(:is_local?).and_return(true)
+        @miq_server.destroy
+
+        expect(@miq_server.errors.full_messages.first).to match(/current/)
+      end
+
+      it "prevents deleting recently active server" do
+        allow(@miq_server).to receive(:is_local?).and_return(false)
+        @miq_server.last_heartbeat = 2.minutes.ago.utc
+        @miq_server.destroy
+
+        expect(@miq_server.errors.full_messages.first).to match(/recently/)
+      end
+    end
+
     context "#ntp_reload_queue" do
       let(:queue_cond) { {:method_name => 'ntp_reload', :class_name => 'MiqServer', :instance_id => @miq_server.id, :server_guid => @miq_server.guid, :zone => @miq_server.zone.name} }
       let(:message)    { MiqQueue.where(queue_cond).first }
@@ -235,7 +252,7 @@ describe MiqServer do
     end
 
     context "with a worker" do
-      before(:each) do
+      before do
         @worker = FactoryGirl.create(:miq_worker, :miq_server_id => @miq_server.id, :pid => Process.pid)
         allow(@miq_server).to receive(:validate_worker).and_return(true)
         @miq_server.setup_drb_variables
@@ -283,7 +300,7 @@ describe MiqServer do
       end
 
       context "with an active messsage and a second server" do
-        before(:each) do
+        before do
           @msg = FactoryGirl.create(:miq_queue, :state => 'dequeue')
           @miq_server2 = FactoryGirl.create(:miq_server, :is_master => true, :zone => @zone)
         end
@@ -348,7 +365,7 @@ describe MiqServer do
     end
 
     context "with server roles" do
-      before(:each) do
+      before do
         @server_roles = []
         [
           ['event',                  1],
@@ -364,7 +381,7 @@ describe MiqServer do
       end
 
       context "activating All roles" do
-        before(:each) do
+        before do
           @miq_server.activate_all_roles
         end
 
@@ -374,7 +391,7 @@ describe MiqServer do
       end
 
       context "activating Event role" do
-        before(:each) do
+        before do
           @miq_server.activate_roles("event")
         end
 
@@ -430,6 +447,20 @@ describe MiqServer do
 
     it "Inactive status returns false" do
       expect(described_class.new(:status => "stopped").active?).to be_falsey
+    end
+  end
+
+  describe "#zone_description" do
+    it "delegates to zone" do
+      _, miq_server, zone = EvmSpecHelper.create_guid_miq_server_zone
+      expect(miq_server.zone_description).to eq(zone.description)
+    end
+  end
+
+  describe "#description" do
+    it "doesnt blowup" do
+      s = described_class.new(:name => "name")
+      expect(s.description).to eq(s.name)
     end
   end
 end

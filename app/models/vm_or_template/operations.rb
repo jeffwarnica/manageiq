@@ -64,6 +64,17 @@ module VmOrTemplate::Operations
     check_policy_prevent(:request_vm_destroy, :raw_destroy)
   end
 
+  def raw_rename(new_name)
+    unless ext_management_system
+      raise _("VM has no Provider, unable to renamey VM")
+    end
+    run_command_via_parent(:vm_rename, :new_name => new_name)
+  end
+
+  def rename(new_name)
+    raw_rename(new_name)
+  end
+
   private
 
   #
@@ -113,10 +124,6 @@ module VmOrTemplate::Operations
 
   def validate_vm_control_powered_on
     validate_vm_control_power_state(true)
-  end
-
-  def validate_vm_control_not_powered_on
-    validate_vm_control_power_state(false)
   end
 
   def validate_vm_control_power_state(check_powered_on)

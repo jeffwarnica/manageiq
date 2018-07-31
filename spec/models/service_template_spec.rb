@@ -45,9 +45,10 @@ describe ServiceTemplate do
     end
 
     it "does not show hidden buttons" do
-      service_template = FactoryGirl.create(:service_template, :name => "foo")
-      true_expression = MiqExpression.new("=" => {"field" => "ServiceTemplate-name", "value" => "foo"})
-      false_expression = MiqExpression.new("=" => {"field" => "ServiceTemplate-name", "value" => "bar"})
+      service_template = FactoryGirl.create(:service_template)
+      service = FactoryGirl.create(:service, :name => "foo", :service_template => service_template)
+      true_expression = MiqExpression.new("=" => {"field" => "Service-name", "value" => "foo"})
+      false_expression = MiqExpression.new("=" => {"field" => "Service-name", "value" => "labar"})
       FactoryGirl.create(:custom_button,
                          :name                  => "visible button",
                          :applies_to_class      => "Service",
@@ -79,7 +80,7 @@ describe ServiceTemplate do
           )
         ]
       }
-      expect(service_template.custom_actions).to match(expected)
+      expect(service_template.custom_actions(service)).to match(expected)
     end
 
     context "expression evaluation" do
@@ -143,8 +144,9 @@ describe ServiceTemplate do
 
     it "serializes the enablement" do
       service_template = FactoryGirl.create(:service_template, :name => "foo")
-      true_expression = MiqExpression.new("=" => {"field" => "ServiceTemplate-name", "value" => "foo"})
-      false_expression = MiqExpression.new("=" => {"field" => "ServiceTemplate-name", "value" => "bar"})
+      service = FactoryGirl.create(:service, :name => "bar", :service_template => service_template)
+      true_expression = MiqExpression.new("=" => {"field" => "Service-name", "value" => "bar"})
+      false_expression = MiqExpression.new("=" => {"field" => "Service-name", "value" => "foo"})
       FactoryGirl.create(:custom_button,
                          :name                  => "enabled button",
                          :applies_to_class      => "Service",
@@ -178,7 +180,7 @@ describe ServiceTemplate do
           )
         ]
       }
-      expect(service_template.custom_actions).to match(expected)
+      expect(service_template.custom_actions(service)).to match(expected)
     end
   end
 
@@ -188,18 +190,22 @@ describe ServiceTemplate do
       true_expression = MiqExpression.new("=" => {"field" => "ServiceTemplate-name", "value" => "foo"})
       false_expression = MiqExpression.new("=" => {"field" => "ServiceTemplate-name", "value" => "bar"})
       visible_button = FactoryGirl.create(:custom_button,
-                                          :applies_to_class      => "Service",
+                                          :applies_to_class      => "ServiceTemplate",
+                                          :applies_to_id         => service_template.id,
                                           :visibility_expression => true_expression)
       _hidden_button = FactoryGirl.create(:custom_button,
-                                          :applies_to_class      => "Service",
+                                          :applies_to_class      => "ServiceTemplate",
+                                          :applies_to_id         => service_template.id,
                                           :visibility_expression => false_expression)
       visible_button_in_group = FactoryGirl.create(:custom_button,
-                                                   :applies_to_class      => "Service",
+                                                   :applies_to_class      => "ServiceTemplate",
+                                                   :applies_to_id         => service_template.id,
                                                    :visibility_expression => true_expression)
       hidden_button_in_group = FactoryGirl.create(:custom_button,
-                                                  :applies_to_class      => "Service",
+                                                  :applies_to_class      => "ServiceTemplate",
+                                                  :applies_to_id         => service_template.id,
                                                   :visibility_expression => false_expression)
-      FactoryGirl.create(:custom_button_set).tap do |group|
+      service_template.custom_button_sets << FactoryGirl.create(:custom_button_set).tap do |group|
         group.add_member(visible_button_in_group)
         group.add_member(hidden_button_in_group)
       end
@@ -209,51 +215,74 @@ describe ServiceTemplate do
   end
 
   context "#type_display" do
-    before(:each) do
+    before do
       @st1 = FactoryGirl.create(:service_template, :name => 'Service Template 1')
     end
 
-    it "with service_type of unknown" do
-      expect(@st1.type_display).to eq('Unknown')
+    it "with default service_type" do
+      expect(@st1.service_type).to eq("atomic")
+      expect(@st1.type_display).to eq('Item')
     end
 
     it "with service_type of atomic" do
-      @st1.update_attributes(:service_type => 'atomic')
+      @st1.update_attributes(:service_type => described_class::SERVICE_TYPE_ATOMIC)
       expect(@st1.type_display).to eq('Item')
     end
 
     it "with service_type of composite" do
-      @st1.update_attributes(:service_type => 'composite')
+      @st1.update_attributes(:service_type => described_class::SERVICE_TYPE_COMPOSITE)
       expect(@st1.type_display).to eq('Bundle')
+    end
+
+    it "with user service_type" do
+      @st1.update_attributes(:service_type => 'user')
+      expect(@st1.type_display).to eq('User')
+    end
+
+    it "with no service_type" do
+      @st1.update_attributes(:service_type => nil)
+      expect(@st1.type_display).to eq('Unknown')
     end
   end
 
   context "#atomic?" do
-    before(:each) do
+    before do
       @st1 = FactoryGirl.create(:service_template)
     end
 
     it "with service_type of unknown" do
+      @st1.update_attributes(:service_type => 'user')
       expect(@st1.atomic?).to be_falsey
     end
 
     it "with service_type of atomic" do
-      @st1.update_attributes(:service_type => 'atomic')
+      @st1.update_attributes(:service_type => described_class::SERVICE_TYPE_ATOMIC)
       expect(@st1.atomic?).to be_truthy
+    end
+
+    it "with service_type of composite" do
+      @st1.update_attributes(:service_type => described_class::SERVICE_TYPE_COMPOSITE)
+      expect(@st1.atomic?).to be_falsey
     end
   end
 
   context "#composite?" do
-    before(:each) do
+    before do
       @st1 = FactoryGirl.create(:service_template)
     end
 
     it "with service_type of unknown" do
+      @st1.update_attributes(:service_type => 'user')
+      expect(@st1.composite?).to be_falsey
+    end
+
+    it "with service_type of atomic" do
+      @st1.update_attributes(:service_type => described_class::SERVICE_TYPE_ATOMIC)
       expect(@st1.composite?).to be_falsey
     end
 
     it "with service_type of composite" do
-      @st1.update_attributes(:service_type => 'composite')
+      @st1.update_attributes(:service_type => described_class::SERVICE_TYPE_COMPOSITE)
       expect(@st1.composite?).to be_truthy
     end
   end
@@ -281,7 +310,7 @@ describe ServiceTemplate do
   end
 
   context "with multiple services" do
-    before(:each) do
+    before do
       @svc_a = FactoryGirl.create(:service_template, :name => 'Svc A')
       @svc_b = FactoryGirl.create(:service_template, :name => 'Svc B')
       @svc_c = FactoryGirl.create(:service_template, :name => 'Svc C')
@@ -423,7 +452,7 @@ describe ServiceTemplate do
   end
 
   context "with a small env" do
-    before(:each) do
+    before do
       @zone1 = FactoryGirl.create(:small_environment)
       allow(MiqServer).to receive(:my_server).and_return(@zone1.miq_servers.first)
       @st1 = FactoryGirl.create(:service_template, :name => 'Service Template 1')
@@ -432,6 +461,7 @@ describe ServiceTemplate do
     it "should create a valid service template" do
       expect(@st1.guid).not_to be_empty
       expect(@st1.service_resources.size).to eq(0)
+      expect(@st1.service_type).to eq(described_class::SERVICE_TYPE_ATOMIC)
     end
 
     it "should not set the owner for the service template" do
@@ -453,12 +483,6 @@ describe ServiceTemplate do
       expect(@test_service.evm_owner.current_group.description).to eq(@user.current_group.description)
     end
 
-    it "should create an empty service template without a type" do
-      expect(@st1.service_type).to eq('unknown')
-      expect(@st1.composite?).to be_falsey
-      expect(@st1.atomic?).to be_falsey
-    end
-
     it "should create a composite service template" do
       st2 = FactoryGirl.create(:service_template, :name => 'Service Template 2')
       @st1.add_resource(st2)
@@ -476,7 +500,7 @@ describe ServiceTemplate do
     end
 
     context "with a VM Provision Request Template" do
-      before(:each) do
+      before do
         admin = FactoryGirl.create(:user_admin)
 
         vm_template = Vm.first
@@ -507,12 +531,6 @@ describe ServiceTemplate do
       user         = FactoryGirl.create(:user, :name => 'Fred Flintstone', :userid => 'fred')
       @vm_template = FactoryGirl.create(:template_vmware, :ext_management_system => FactoryGirl.create(:ems_vmware_with_authentication))
       @ptr = FactoryGirl.create(:miq_provision_request_template, :requester => user, :src_vm_id => @vm_template.id)
-    end
-
-    it 'unknown' do
-      expect(@st1.service_type).to eq "unknown"
-      expect(@st1.template_valid?).to be_truthy
-      expect(@st1.template_valid_error_message).to be_nil
     end
 
     context 'atomic' do
@@ -804,35 +822,102 @@ describe ServiceTemplate do
     end
   end
 
-  context "#provision_request" do
+  context "#order" do
     let(:user) { FactoryGirl.create(:user, :userid => "barney") }
     let(:resource_action) { FactoryGirl.create(:resource_action, :action => "Provision") }
     let(:service_template) { FactoryGirl.create(:service_template, :resource_actions => [resource_action]) }
-    let(:hash) { {:target => service_template, :initiator => 'control'} }
-    let(:workflow) { instance_double(ResourceActionWorkflow) }
+    let(:resource_action_options) { {:target => service_template, :initiator => 'control', :submit_workflow => true} }
     let(:miq_request) { FactoryGirl.create(:service_template_provision_request) }
-    let(:good_result) { { :errors => [], :request => miq_request } }
-    let(:bad_result) { { :errors => %w(Error1 Error2), :request => miq_request } }
-    let(:arg1) { {'ordered_by' => 'fred'} }
-    let(:arg2) { {:initiator => 'control'} }
+    let!(:resource_action_workflow) { ResourceActionWorkflow.new({}, user, resource_action, resource_action_options) }
 
-    it "provision's a service template without errors" do
-      expect(ResourceActionWorkflow).to(receive(:new)
-        .with({}, user, resource_action, hash).and_return(workflow))
-      expect(workflow).to receive(:submit_request).and_return(good_result)
-      expect(workflow).to receive(:set_value).with('ordered_by', 'fred')
-      expect(workflow).to receive(:request_options=).with(:initiator => 'control')
-
-      expect(service_template.provision_request(user, arg1, arg2)).to eq(miq_request)
+    before do
+      allow(ResourceActionWorkflow).to(receive(:new).and_return(resource_action_workflow))
     end
 
-    it "provision's a service template with errors" do
-      expect(ResourceActionWorkflow).to(receive(:new)
-        .with({}, user, resource_action, hash).and_return(workflow))
-      expect(workflow).to receive(:submit_request).and_return(bad_result)
-      expect(workflow).to receive(:set_value).with('ordered_by', 'fred')
-      expect(workflow).to receive(:request_options=).with(:initiator => 'control')
-      expect { service_template.provision_request(user, arg1, arg2) }.to raise_error(RuntimeError)
+    it "success no optional args" do
+      expect(resource_action_workflow).to receive(:submit_request).and_return(miq_request)
+
+      expect(service_template.order(user)).to eq(miq_request)
+    end
+
+    it "successfully scheduled" do
+      EvmSpecHelper.local_miq_server
+      expect(resource_action_workflow).to receive(:validate_dialog).and_return([])
+
+      time   = Time.zone.now.utc.to_s
+      result = service_template.order(user, {}, {}, time)
+
+      expect(result.keys).to eq([:schedule]) # No errors
+      expect(result[:schedule]).to have_attributes(
+        :name         => "Order ServiceTemplate #{service_template.id} at #{time}",
+        :sched_action => {:args => [user.id, {}, {}], :method => "queue_order"},
+        :towhat       => "ServiceTemplate",
+        :resource_id  => service_template.id
+      )
+    end
+
+    it "#queue_order" do
+      EvmSpecHelper.local_miq_server
+
+      service_template.queue_order(user.id, {}, {})
+
+      expect(MiqQueue.first).to have_attributes(
+        :args        => [user.id, {}, {}],
+        :class_name  => "ServiceTemplate",
+        :instance_id => service_template.id,
+        :method_name => "order",
+      )
+    end
+
+    it "successfully scheduled twice" do
+      EvmSpecHelper.local_miq_server
+      expect(resource_action_workflow).to receive(:validate_dialog).twice.and_return([])
+
+      service_template.order(user, {}, {}, Time.zone.now.utc.to_s)
+      service_template.order(user, {}, {}, (Time.zone.now + 1.hour).utc.to_s)
+
+      expect(service_template.miq_schedules.length).to eq(2)
+    end
+
+    context "#provision_request" do
+      let(:arg1) { {'ordered_by' => 'fred'} }
+      context "with submit_workflow" do
+        let(:arg2) { {:initiator => 'control', :submit_workflow => true} }
+
+        it "provisions a service template without errors" do
+          expect(resource_action_workflow).to receive(:validate_dialog).and_return([])
+          expect(resource_action_workflow).to receive(:make_request).and_return(miq_request)
+          expect(resource_action_workflow).to receive(:request_options=).with(:initiator => 'control', :submit_workflow => true)
+
+          expect(service_template.provision_request(user, arg1, arg2)).to eq(miq_request)
+        end
+
+        it "provisions a service template with errors" do
+          expect(resource_action_workflow).to receive(:validate_dialog).and_return(%w(Error1 Error2))
+          expect(resource_action_workflow).to receive(:request_options=).with(:initiator => 'control', :submit_workflow => true)
+
+          expect { service_template.provision_request(user, arg1, arg2) }.to raise_error(RuntimeError)
+        end
+      end
+
+      context "without submit_workflow" do
+        let(:arg2) { {:initiator => 'control'} }
+
+        it "provisions a service template without errors" do
+          expect(resource_action_workflow).to receive(:validate_dialog).and_return([])
+          expect(resource_action_workflow).to receive(:make_request).and_return(miq_request)
+          expect(resource_action_workflow).to receive(:request_options=).with(:initiator => 'control')
+
+          expect(service_template.provision_request(user, arg1, arg2)).to eq(miq_request)
+        end
+
+        it "provisions a service template with errors" do
+          expect(resource_action_workflow).to receive(:validate_dialog).and_return(%w(Error1 Error2))
+          expect(resource_action_workflow).to receive(:request_options=).with(:initiator => 'control')
+
+          expect { service_template.provision_request(user, arg1, arg2) }.to raise_error(RuntimeError)
+        end
+      end
     end
   end
 
@@ -854,6 +939,40 @@ describe ServiceTemplate do
                        'generic_orchestration' => { :description => 'Orchestration',
                                                     :display     => true})
       )
+    end
+  end
+
+  context "#archive" do
+    let(:service_template) { FactoryGirl.create(:service_template, :miq_requests => miq_requests) }
+    context "with no MiqRequests" do
+      let(:miq_requests) { [] }
+
+      it "archives the service_template" do
+        service_template.archive
+        expect(service_template.reload.archived?).to be_truthy
+      end
+    end
+
+    context "with no active MiqRequests" do
+      let(:miq_requests) { [FactoryGirl.create(:service_template_provision_request, :request_state => "finished")] }
+      it "archives the service_template" do
+        service_template.archive
+        expect(service_template.reload.archived?).to be_truthy
+      end
+    end
+
+    context "with an active MiqRequest" do
+      let(:miq_requests) do
+        [
+          FactoryGirl.create(:service_template_provision_request, :request_state => "finished"),
+          FactoryGirl.create(:service_template_provision_request, :request_state => "queued"),
+        ]
+      end
+
+      it "archives the service_template" do
+        expect { service_template.archive }.to raise_error("Cannot archive while in use")
+        expect(service_template.reload.archived?).to be_falsy
+      end
     end
   end
 end

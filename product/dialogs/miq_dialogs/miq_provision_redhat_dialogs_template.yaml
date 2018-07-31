@@ -440,6 +440,7 @@
               :vlans: true
             :method: :allowed_vlans
           :description: Network
+          :required_description: Virtual NIC Profile ID or Profile Name (Network Name)
           :required: true
           :display: :edit
           :default: <Template>
@@ -494,6 +495,8 @@
             "12288": "12288"
             "16384": "16384"
             "32768": "32768"
+            "65536": "65536"
+            "131072": "131072"
           :description: Memory (MB)
           :required: false
           :display: :edit

@@ -37,6 +37,8 @@ class ContainerImage < ApplicationRecord
 
   after_create :raise_creation_event
 
+  delegate :my_zone, :to => :ext_management_system, :allow_nil => true
+
   def full_name
     return docker_id if image_ref && image_ref.start_with?(DOCKER_PULLABLE_PREFIX)
     result = ""
@@ -66,8 +68,8 @@ class ContainerImage < ApplicationRecord
     container_image_registry.present? ? container_image_registry.full_name : _("Unknown image source")
   end
 
-  def scan
-    ext_management_system.scan_job_create(self)
+  def scan(userid = "system")
+    ext_management_system.scan_job_create(self, userid)
   end
 
   def perform_metadata_scan(ost)

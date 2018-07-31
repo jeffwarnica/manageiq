@@ -48,7 +48,7 @@ class ChargeableField < ApplicationRecord
   def measure(consumption, options, sub_metric = nil)
     return consumption.consumed_hours_in_interval if metering?
     return 1.0 if fixed?
-    return 0 if options.method_for_allocated_metrics != :current_value && consumption.none?(metric)
+    return 0 if options.method_for_allocated_metrics != :current_value && consumption.none?(metric, sub_metric)
     return consumption.send(options.method_for_allocated_metrics, metric, sub_metric) if allocated?
     return consumption.avg(metric) if used?
   end
@@ -62,8 +62,19 @@ class ChargeableField < ApplicationRecord
     UNITS[metric] ? detail_measure.adjust(target_unit, UNITS[metric]) : 1
   end
 
+  def rate_key(sub_metric = nil)
+    "#{rate_name}_#{sub_metric ? sub_metric + '_' : ''}rate" # rate value (e.g. Storage [Used|Allocated|Fixed] Rate)
+  end
+
   def metric_key(sub_metric = nil)
     "#{rate_name}_#{sub_metric ? sub_metric + '_' : ''}metric" # metric value (e.g. Storage [Used|Allocated|Fixed])
+  end
+
+  # Fixed metric has _1 or _2 in name but column
+  # fixed_compute_metric is used in report and calculations
+  # TODO: remove and unify with metric_key
+  def metric_column_key
+    fixed? ? metric_key.gsub(/\_1|\_2/, '') : metric_key
   end
 
   def cost_keys(sub_metric = nil)
@@ -77,11 +88,20 @@ class ChargeableField < ApplicationRecord
     group == 'metering' && source == 'used'
   end
 
-  private
-
   def rate_name
     "#{group}_#{source}"
   end
+
+  def self.cols_on_metric_rollup
+    (%w(id tag_names resource_id) + chargeable_cols_on_metric_rollup).uniq
+  end
+
+  def self.col_index(column)
+    @rate_cols ||= {}
+    @rate_cols[column] ||= cols_on_metric_rollup.index(column.to_s)
+  end
+
+  private
 
   def used?
     source == 'used'
@@ -117,6 +137,6 @@ class ChargeableField < ApplicationRecord
   def self.chargeable_cols_on_metric_rollup
     existing_cols = MetricRollup.attribute_names
     chargeable_cols = pluck(:metric) & existing_cols
-    chargeable_cols.map! { |x| VIRTUAL_COL_USES[x] || x }
+    chargeable_cols.map! { |x| VIRTUAL_COL_USES[x] || x }.sort
   end
 end

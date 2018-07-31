@@ -20,6 +20,10 @@ class ManageIQ::Providers::EmbeddedAnsible::AutomationManager::Playbook <
     job_template_klass.raw_create_in_provider(manager, jt_options)
   end
 
+  def self.display_name(number = 1)
+    n_('Playbook (Embedded Ansible)', 'Playbooks (Embedded Ansible)', number)
+  end
+
   private
 
   def build_parameter_list(options)
@@ -39,9 +43,9 @@ class ManageIQ::Providers::EmbeddedAnsible::AutomationManager::Playbook <
       :extra_vars               => options[:extra_vars].try(:to_json)
     }
 
-    %i(credential cloud_credential network_credential).each do |credential|
+    %i(credential vault_credential cloud_credential network_credential).each do |credential|
       cred_sym = "#{credential}_id".to_sym
-      params[credential] = Authentication.find(options[cred_sym]).manager_ref if options[cred_sym]
+      params[credential] = Authentication.find(options[cred_sym]).manager_ref if options[cred_sym].present?
     end
 
     params.compact

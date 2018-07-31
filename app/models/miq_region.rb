@@ -206,7 +206,7 @@ class MiqRegion < ApplicationRecord
   end
 
   def remote_ui_miq_server
-    MiqServer.in_region(region).find_by(:has_active_userinterface => true)
+    MiqServer.in_region(region).recently_active.find_by(:has_active_userinterface => true)
   end
 
   def remote_ui_ipaddress
@@ -220,12 +220,16 @@ class MiqRegion < ApplicationRecord
   end
 
   def remote_ui_url(contact_with = :hostname)
+    svr = remote_ui_miq_server
+    remote_ui_url_override = svr.settings_for_resource.ui.url if svr
+    return remote_ui_url_override if remote_ui_url_override
+
     hostname = send("remote_ui_#{contact_with}")
     hostname && "https://#{hostname}"
   end
 
   def remote_ws_miq_server
-    MiqServer.in_region(region).find_by(:has_active_webservices => true)
+    MiqServer.in_region(region).recently_active.find_by(:has_active_webservices => true)
   end
 
   def remote_ws_address
@@ -299,6 +303,10 @@ class MiqRegion < ApplicationRecord
       options[type] = self.is_tagged_with?("capture_enabled", :ns => "/performance/#{type}")
     end
     @perf_capture_always = options.freeze
+  end
+
+  def self.display_name(number = 1)
+    n_('Region', 'Regions', number)
   end
 
   private

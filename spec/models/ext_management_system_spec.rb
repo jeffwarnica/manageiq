@@ -40,6 +40,7 @@ describe ExtManagementSystem do
       "openstack_network"           => "OpenStack Network",
       "lenovo_ph_infra"             => "Lenovo XClarity",
       "nuage_network"               => "Nuage Network Manager",
+      "redfish_ph_infra"            => "Redfish",
       "redhat_network"              => "Redhat Network",
       "rhevm"                       => "Red Hat Virtualization",
       "scvmm"                       => "Microsoft System Center VMM",
@@ -79,7 +80,7 @@ describe ExtManagementSystem do
   end
 
   it ".ems_infra_discovery_types" do
-    expected_types = %w(scvmm rhevm virtualcenter)
+    expected_types = %w(scvmm rhevm virtualcenter openstack_infra)
 
     expect(described_class.ems_infra_discovery_types).to match_array(expected_types)
   end
@@ -162,7 +163,7 @@ describe ExtManagementSystem do
 
   context "with multiple endpoints using connection_configurations" do
     let(:ems) do
-      FactoryGirl.build("ems_openstack",
+      FactoryGirl.build(:ems_openstack,
                         :hostname                  => "example.org",
                         :connection_configurations => [{:endpoint => {:role     => "amqp",
                                                                       :hostname => "amqp.example.org"}}])
@@ -181,7 +182,7 @@ describe ExtManagementSystem do
 
   context "with multiple endpoints using connection_configurations (string keys)" do
     let(:ems) do
-      FactoryGirl.build("ems_openstack",
+      FactoryGirl.build(:ems_openstack,
                         "hostname"                  => "example.org",
                         "connection_configurations" => [{"endpoint" => {"role"     => "amqp",
                                                                         "hostname" => "amqp.example.org"}}])
@@ -239,7 +240,7 @@ describe ExtManagementSystem do
   end
 
   context "with two small envs" do
-    before(:each) do
+    before do
       @zone1 = FactoryGirl.create(:small_environment)
       @zone2 = FactoryGirl.create(:small_environment)
     end
@@ -260,7 +261,7 @@ describe ExtManagementSystem do
   end
 
   context "with virtual totals" do
-    before(:each) do
+    before do
       @ems = FactoryGirl.create(:ems_vmware)
       2.times do
         FactoryGirl.create(:vm_vmware,
@@ -493,6 +494,30 @@ describe ExtManagementSystem do
       allow(ManageIQ::Providers::Amazon::CloudManager).to receive(:raw_connect).and_return(connection)
 
       expect(ManageIQ::Providers::Amazon::CloudManager.raw_connect?).to eq(true)
+    end
+  end
+
+  describe ".inventory_status" do
+    it "works with infra providers" do
+      ems = FactoryGirl.create(:ems_infra)
+      host = FactoryGirl.create(:host, :ext_management_system => ems)
+      FactoryGirl.create(:vm_infra, :ext_management_system => ems, :host => host)
+      FactoryGirl.create(:vm_infra, :ext_management_system => ems, :host => host)
+
+      result = ExtManagementSystem.inventory_status
+      expect(result.size).to eq(2)
+      expect(result[0]).to eq(%w(region zone kind ems hosts vms))
+      expect(result[1][4..-1]).to eq([1, 2])
+    end
+
+    it "works with container providers" do
+      ems = FactoryGirl.create(:ems_container)
+      FactoryGirl.create(:container, :ems_id => ems.id)
+      FactoryGirl.create(:container, :ems_id => ems.id)
+      result = ExtManagementSystem.inventory_status
+      expect(result.size).to eq(2)
+      expect(result[0]).to eq(%w(region zone kind ems containers))
+      expect(result[1][4..-1]).to eq([2])
     end
   end
 end

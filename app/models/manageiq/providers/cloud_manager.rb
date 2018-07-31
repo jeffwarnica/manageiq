@@ -20,6 +20,7 @@ module ManageIQ::Providers
     has_many :cloud_tenants,                 :foreign_key => :ems_id, :dependent => :destroy
     has_many :cloud_resource_quotas,         :foreign_key => :ems_id, :dependent => :destroy
     has_many :cloud_volumes,                 :foreign_key => :ems_id, :dependent => :destroy
+    has_many :cloud_volume_types,            :foreign_key => :ems_id, :dependent => :destroy
     has_many :cloud_volume_backups,          :foreign_key => :ems_id, :dependent => :destroy
     has_many :cloud_volume_snapshots,        :foreign_key => :ems_id, :dependent => :destroy
     has_many :cloud_object_store_containers, :foreign_key => :ems_id, :dependent => :destroy
@@ -85,6 +86,7 @@ module ManageIQ::Providers
         elsif existing_source_tenant = Tenant.descendants_of(tenant_parent).find_by(:name => tenant_params[:name])
           _log.info("CloudTenant #{cloud_tenant.name} has orphaned tenant #{existing_source_tenant.name}")
           cloud_tenant.source_tenant = existing_source_tenant
+          tenant_params[:parent] = tenant_parent
           cloud_tenant.update_source_tenant(tenant_params)
         else
           _log.info("CloudTenant #{cloud_tenant.name} has no tenant")
@@ -112,11 +114,16 @@ module ManageIQ::Providers
 
       source_tenant.descendants.each do |tenant|
         next if tenant.source
-        next if tenant.parent == source_tenant # tenant is already under provider's tenant
+
+        if tenant.parent == source_tenant # tenant is already under provider's tenant
+          _log.info("Setting source_id and source_type to nil for #{tenant.name} under provider's tenant #{source_tenant.name}")
+          tenant.update_attributes(:source_id => nil, :source_type => nil)
+          next
+        end
 
         # move tenant under the provider's tenant
         _log.info("Moving out #{tenant.name} under provider's tenant #{source_tenant.name}")
-        tenant.update_attributes(:parent => source_tenant)
+        tenant.update_attributes(:parent => source_tenant, :source_id => nil, :source_type => nil)
       end
     end
 
@@ -130,6 +137,10 @@ module ManageIQ::Providers
 
     def create_cloud_tenant(options)
       CloudTenant.create_cloud_tenant(self, options)
+    end
+
+    def self.display_name(number = 1)
+      n_('Cloud Manager', 'Cloud Managers', number)
     end
   end
 end

@@ -292,9 +292,7 @@ FactoryGirl.define do
   factory :ems_google,
           :aliases => ["manageiq/providers/google/cloud_manager"],
           :class   => "ManageIQ::Providers::Google::CloudManager",
-          :parent  => :ems_cloud do
-    provider_region "us-central1"
-  end
+          :parent  => :ems_cloud
 
   factory :ems_google_with_authentication,
           :parent => :ems_google do
@@ -306,9 +304,7 @@ FactoryGirl.define do
   factory :ems_google_network,
           :aliases => ["manageiq/providers/google/network_manager"],
           :class   => "ManageIQ::Providers::Google::NetworkManager",
-          :parent  => :ems_network do
-    provider_region "us-central1"
-  end
+          :parent  => :ems_network
 
   # Leaf classes for ems_container
 
@@ -345,6 +341,13 @@ FactoryGirl.define do
     after(:create) do |x|
       type = (x.type.split("::")[0..2] + ["AutomationManager", "ConfigurationScript"]).join("::")
       x.configuration_scripts << FactoryGirl.create(:configuration_script, :type => type)
+    end
+  end
+
+  trait(:configuration_workflow) do
+    after(:create) do |x|
+      type = (x.type.split("::")[0..2] + %w(AutomationManager ConfigurationWorkflow)).join("::")
+      x.configuration_workflows << FactoryGirl.create(:configuration_workflow, :type => type)
     end
   end
 

@@ -10,7 +10,7 @@ describe Dialog do
 
     it "seed files from plugins" do
       mock_engine = double(:root => Rails.root)
-      expect(Vmdb::Plugins.instance).to receive(:vmdb_plugins).and_return([mock_engine])
+      expect(Vmdb::Plugins).to receive(:each).and_yield(mock_engine)
 
       stub_const('Dialog::DIALOG_DIR_PLUGIN', test_file_path)
       stub_const('Dialog::DIALOG_DIR_CORE', 'non-existent-dir')
@@ -19,6 +19,43 @@ describe Dialog do
       )
       expect(mock_engine).to receive(:root)
       described_class.seed
+    end
+  end
+
+  describe "#initialize_with_given_values" do
+    let(:dialog) { described_class.new }
+    let(:field1) { DialogField.new(:name => "name1") }
+    let(:field2) { DialogField.new(:name => "name2") }
+
+    let(:given_values) do
+      {
+        "name1" => "One",
+        "name2" => "Two"
+      }
+    end
+
+    before do
+      allow(dialog).to receive(:dialog_fields).and_return([field1, field2])
+      allow(field1).to receive(:initialize_with_given_value)
+      allow(field2).to receive(:initialize_with_given_value)
+    end
+
+    it "sets the current dialog to each field" do
+      dialog.initialize_with_given_values(given_values)
+      expect(field1.dialog).to eq(dialog)
+      expect(field2.dialog).to eq(dialog)
+    end
+
+    it "sets the value from the given values to the value property for automate processing" do
+      dialog.initialize_with_given_values(given_values)
+      expect(field1.value).to eq("One")
+      expect(field2.value).to eq("Two")
+    end
+
+    it "calls initialize_with_given_value on each field" do
+      expect(field1).to receive(:initialize_with_given_value).with("One")
+      expect(field2).to receive(:initialize_with_given_value).with("Two")
+      dialog.initialize_with_given_values(given_values)
     end
   end
 
@@ -62,7 +99,7 @@ describe Dialog do
   end
 
   context "#destroy" do
-    before(:each) do
+    before do
       @dialog = FactoryGirl.create(:dialog, :label => 'dialog')
     end
 
@@ -81,7 +118,7 @@ describe Dialog do
   end
 
   describe "dialog structures" do
-    before(:each) do
+    before do
       @dialog       = FactoryGirl.build(:dialog, :label => 'dialog')
       @dialog_tab   = FactoryGirl.create(:dialog_tab, :label => 'tab')
       @dialog_group = FactoryGirl.create(:dialog_group, :label => 'group')
@@ -133,7 +170,7 @@ describe Dialog do
   end
 
   context "#remove_all_resources" do
-    before(:each) do
+    before do
       @dialog       = FactoryGirl.create(:dialog, :label => 'dialog')
       @dialog_tab   = FactoryGirl.create(:dialog_tab, :label => 'tab')
       @dialog_group = FactoryGirl.create(:dialog_group, :label => 'group')
@@ -163,7 +200,7 @@ describe Dialog do
   end
 
   context "remove resources" do
-    before(:each) do
+    before do
       @dialog             = FactoryGirl.create(:dialog,       :label => 'dialog')
       @dialog_tab         = FactoryGirl.create(:dialog_tab,   :label => 'tab')
       @dialog_group       = FactoryGirl.create(:dialog_group, :label => 'group')
@@ -208,7 +245,7 @@ describe Dialog do
   end
 
   context "#each_field" do
-    before(:each) do
+    before do
       @dialog        = FactoryGirl.create(:dialog, :label => 'dialog')
       @dialog_tab    = FactoryGirl.create(:dialog_tab, :label => 'tab')
       @dialog_group  = FactoryGirl.create(:dialog_group, :label => 'group')
@@ -331,7 +368,7 @@ describe Dialog do
   end
 
   context "#dialog_fields" do
-    before(:each) do
+    before do
       @dialog        = FactoryGirl.create(:dialog, :label => 'dialog')
       @dialog_tab    = FactoryGirl.create(:dialog_tab, :label => 'tab')
       @dialog_group  = FactoryGirl.create(:dialog_group, :label => 'group')

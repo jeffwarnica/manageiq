@@ -352,21 +352,26 @@ describe GenericObject do
       go.remove_from_service(service)
       expect(service.generic_objects).to be_blank
     end
+
+    it 'removes the generic object from all related services before destroy' do
+      go.add_to_service(service)
+      expect(service.generic_objects).to include(go)
+
+      go.destroy
+      expect(service.generic_objects).to be_blank
+    end
   end
 
   context "custom buttons" do
-    let(:service_template) { FactoryGirl.create(:service_template) }
-    let(:service) { FactoryGirl.create(:service, :service_template => service_template) }
-
     describe "#custom_actions" do
-      it "returns list of custom actions retrived linked GenericObjectDefinition" do
+      it "returns list of custom actions retrived from linked GenericObjectDefinition" do
         expect(definition).to receive(:custom_actions).with(go)
         go.custom_actions
       end
     end
 
     describe "#custom_action_buttons" do
-      it "returns list of custom action buttons retrived linked GenericObjectDefinition" do
+      it "returns list of custom action buttons retrived from linked GenericObjectDefinition" do
         expect(definition).to receive(:custom_action_buttons).with(go)
         go.custom_action_buttons
       end

@@ -52,24 +52,41 @@ class MiqRequest < ApplicationRecord
 
   include MiqRequestMixin
 
-  scope :created_recently,    ->(days_ago)   { where("created_on > ?", days_ago.days.ago) }
+  scope :created_recently,    ->(days_ago)   { where("miq_requests.created_on > ?", days_ago.days.ago) }
   scope :with_approval_state, ->(state)      { where(:approval_state => state) }
   scope :with_type,           ->(type)       { where(:type => type) }
   scope :with_request_type,   ->(type)       { where(:request_type => type) }
   scope :with_requester,      ->(id)         { where(:requester_id => User.with_same_userid(id).collect(&:id)) }
 
   MODEL_REQUEST_TYPES = {
+    :Automate       => {
+      :AutomationRequest => {
+        :automation => N_("Automation")
+      }
+    },
     :Service        => {
+      :MiqProvisionConfiguredSystemRequest => {
+        :provision_via_foreman => N_("%{config_mgr_type} Provision") % {:config_mgr_type => ui_lookup(:ui_title => 'foreman')}
+      },
       :MiqProvisionRequest                 => {
         :template          => N_("VM Provision"),
         :clone_to_vm       => N_("VM Clone"),
         :clone_to_template => N_("VM Publish"),
       },
-      :MiqProvisionConfiguredSystemRequest => {
-        :provision_via_foreman => N_("%{config_mgr_type} Provision") % {:config_mgr_type => ui_lookup(:ui_title => 'foreman')}
+      :OrchestrationStackRetireRequest     => {
+        :orchestration_stack_retire => N_("Orchestration Stack Retire")
       },
-      :VmReconfigureRequest                => {
-        :vm_reconfigure => N_("VM Reconfigure")
+      :PhysicalServerProvisionRequest      => {
+        :provision_physical_server => N_("Physical Server Provision")
+      },
+      :ServiceRetireRequest                => {
+        :service_retire => N_("Service Retire")
+      },
+      :ServiceReconfigureRequest           => {
+        :service_reconfigure => N_("Service Reconfigure")
+      },
+      :ServiceTemplateProvisionRequest     => {
+        :clone_to_service => N_("Service Provision")
       },
       :VmCloudReconfigureRequest           => {
         :vm_cloud_reconfigure => N_("VM Cloud Reconfigure")
@@ -77,29 +94,20 @@ class MiqRequest < ApplicationRecord
       :VmMigrateRequest                    => {
         :vm_migrate => N_("VM Migrate")
       },
-      :ServiceTemplateProvisionRequest     => {
-        :clone_to_service => N_("Service Provision")
+      :VmReconfigureRequest                => {
+        :vm_reconfigure => N_("VM Reconfigure")
       },
-      :ServiceReconfigureRequest           => {
-        :service_reconfigure => N_("Service Reconfigure")
-      },
-      :PhysicalServerProvisionRequest      => {
-        :provision_physical_server => N_("Physical Server Provision")
-      }
-    },
-    :Infrastructure => {
-      :MiqHostProvisionRequest => {
-        :host_pxe_install => N_("Host Provision")
+      :VmRetireRequest                     => {
+        :vm_retire => N_("VM Retire")
       },
     },
-    :Automate       => {
-      :AutomationRequest => {
-        :automation => N_("Automation")
-      }
-    }
   }.freeze
 
-  REQUEST_TYPES_BACKEND_ONLY = {:MiqProvisionRequestTemplate => {:template => "VM Provision Template"}}
+  REQUEST_TYPES_BACKEND_ONLY = {
+    :MiqProvisionRequestTemplate              => {:template            => "VM Provision Template"},
+    :ServiceTemplateTransformationPlanRequest => {:transformation_plan => "Transformation Plan"}
+  }
+
   REQUEST_TYPES = MODEL_REQUEST_TYPES.values.each_with_object(REQUEST_TYPES_BACKEND_ONLY) { |i, h| i.each { |k, v| h[k] = v } }
   REQUEST_TYPE_TO_MODEL = MODEL_REQUEST_TYPES.values.each_with_object({}) do |i, h|
     i.each { |k, v| v.keys.each { |vk| h[vk] = k } }
@@ -114,7 +122,27 @@ class MiqRequest < ApplicationRecord
   def self.with_reason_like(reason)
     # Reason string uses * wildcard, scope is required to convert it into % wildcard for LIKE statement
     reason = reason.match(/\A(?<start>\*?)(?<content>.*?)(?<end>\*?)\z/)
-    where("reason LIKE (?)", "#{reason[:start] ? '%' : ''}#{sanitize_sql_like(reason[:content])}#{reason[:end] ? '%' : ''}")
+    joins(:miq_approvals).where("miq_approvals.reason LIKE (?)", "#{reason[:start] ? '%' : ''}#{sanitize_sql_like(reason[:content])}#{reason[:end] ? '%' : ''}")
+  end
+
+  def self.user_or_group_owned(user, miq_group)
+    if user && miq_group
+      user_owned(user).or(group_owned(miq_group))
+    elsif user
+      user_owned(user)
+    elsif miq_group
+      group_owned(miq_group)
+    else
+      none
+    end
+  end
+
+  def self.user_owned(user)
+    where(:requester_id => user.id)
+  end
+
+  def self.group_owned(miq_group)
+    where(:requester_id => miq_group.user_ids)
   end
 
   # Supports old-style requests where specific request was a seperate table connected as a resource
@@ -132,6 +160,10 @@ class MiqRequest < ApplicationRecord
 
   def resource_type
     self.class.name
+  end
+
+  def tracking_label_id
+    "r#{id}_#{self.class.name.underscore}_#{id}"
   end
 
   def initialize_attributes
@@ -299,7 +331,7 @@ class MiqRequest < ApplicationRecord
   def self.request_task_class
     @request_task_class ||= begin
       case name
-      when 'MiqProvisionRequest', 'MiqHostProvisionRequest'
+      when 'MiqProvisionRequest'
         name.underscore.chomp('_request').camelize.constantize
       else
         name.underscore.gsub(/_request$/, "_task").camelize.constantize
@@ -364,7 +396,7 @@ class MiqRequest < ApplicationRecord
     MiqServer.my_zone
   end
 
-  def my_role
+  def my_role(_action = nil)
     nil
   end
 
@@ -392,18 +424,18 @@ class MiqRequest < ApplicationRecord
       :instance_id    => id,
       :method_name    => "create_request_tasks",
       :zone           => options.fetch(:miq_zone, my_zone),
-      :role           => my_role,
-      :tracking_label => "#{self.class.name.underscore}_#{id}",
+      :role           => my_role(:create_request_tasks),
+      :tracking_label => tracking_label_id,
       :msg_timeout    => 3600,
       :deliver_on     => deliver_on
     )
   end
 
   def create_request_tasks
-    _log.info("Creating request task instances for: <#{description}>...")
-
+    # Quota denial will result in automate_event_failed? being true
     return if automate_event_failed?("request_starting")
 
+    _log.info("Creating request task instances for: <#{description}>...")
     # Create a MiqRequestTask object for each requested item
     options[:delivered_on] = Time.now.utc
     update_attribute(:options, options)
@@ -549,11 +581,24 @@ class MiqRequest < ApplicationRecord
     "#{self.class::SOURCE_CLASS_NAME}:#{requested_task_idx.inspect}"
   end
 
+  def self.display_name(number = 1)
+    n_('Request', 'Requests', number)
+  end
+
+  def cancel
+    raise _("Cancel operation is not supported for #{self.class.name}")
+  end
+
+  def canceling?
+    false
+  end
+
   private
 
   def clean_up_keys_for_request_task
     req_task_attributes = attributes.dup
     (req_task_attributes.keys - MiqRequestTask.column_names + REQUEST_UNIQUE_KEYS).each { |key| req_task_attributes.delete(key) }
+    req_task_attributes["options"].delete(:user_message)
 
     _log.debug("#{self.class.name} Attributes: [#{req_task_attributes.inspect}]...")
 

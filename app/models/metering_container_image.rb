@@ -1,7 +1,9 @@
 class MeteringContainerImage < ChargebackContainerImage
   set_columns_hash(
-    :metering_used_metric   => :integer,
-    :existence_hours_metric => :integer
+    :metering_used_metric                               => :integer,
+    :existence_hours_metric                             => :integer,
+    :beginning_of_resource_existence_in_report_interval => :datetime,
+    :end_of_resource_existence_in_report_interval       => :datetime
   )
 
   include Metering
@@ -10,6 +12,7 @@ class MeteringContainerImage < ChargebackContainerImage
     {
       "cpu_cores_allocated_metric" => {:grouping => [:total]},
       "cpu_cores_used_metric"      => {:grouping => [:total]},
+      "existence_hours_metric"     => {:grouping => [:total]},
       "fixed_compute_metric"       => {:grouping => [:total]},
       "memory_allocated_metric"    => {:grouping => [:total]},
       "memory_used_metric"         => {:grouping => [:total]},
@@ -20,5 +23,9 @@ class MeteringContainerImage < ChargebackContainerImage
 
   def self.build_results_for_report_MeteringContainerImage(options)
     build_results_for_report_ChargebackContainerImage(options)
+  end
+
+  def self.display_name(number = 1)
+    n_('Metering for Image', 'Metering for Images', number)
   end
 end

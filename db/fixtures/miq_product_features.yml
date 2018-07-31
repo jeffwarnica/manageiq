@@ -130,7 +130,7 @@
     :feature_type: view
     :identifier: infra_topology_view
 
-# MiqRequest
+# MiqRequest under Services maintab for all Request types
 - :name: Requests
   :description: Everything under Requests
   :feature_type: node
@@ -180,6 +180,61 @@
       :description: Edit a Request
       :feature_type: admin
       :identifier: miq_request_edit
+  - :name: Request Admin
+    :description: Edit other user's requests
+    :feature_type: admin
+    :identifier: miq_request_superadmin
+
+# MiqRequest under Automation/Automate tab for Automate Requests
+- :name: Requests
+  :description: Everything under Requests
+  :feature_type: node
+  :identifier: ae_miq_request
+  :children:
+  - :name: View
+    :description: View Requests
+    :feature_type: view
+    :identifier: ae_miq_request_view
+    :children:
+    - :name: List
+      :description: Display Lists of Requests
+      :feature_type: view
+      :identifier: ae_miq_request_show_list
+    - :name: Show
+      :description: Display Individual Requests
+      :feature_type: view
+      :identifier: ae_miq_request_show
+    - :name: Reload
+      :description: Reload Requests
+      :feature_type: view
+      :hidden: true
+      :identifier: ae_miq_request_reload
+  - :name: Operate
+    :description: Perform Operations on Requests
+    :feature_type: control
+    :identifier: ae_miq_request_control
+    :children:
+    - :name: Approve and Deny
+      :description: Approve and Deny Requests
+      :feature_type: control
+      :identifier: ae_miq_request_approval
+  - :name: Modify
+    :description: Modify Requests
+    :feature_type: admin
+    :identifier: ae_miq_request_admin
+    :children:
+    - :name: Copy
+      :description: Copy a Request
+      :feature_type: admin
+      :identifier: ae_miq_request_copy
+    - :name: Delete
+      :description: Delete Requests
+      :feature_type: admin
+      :identifier: ae_miq_request_delete
+    - :name: Edit
+      :description: Edit a Request
+      :feature_type: admin
+      :identifier: ae_miq_request_edit
 
 # Catalog Items
 - :name: Catalogs Explorer
@@ -244,6 +299,14 @@
         :description: Request to Order Services
         :feature_type: admin
         :identifier: svc_catalog_provision
+      - :name: Archive Services
+        :description: Request to Archive Services
+        :feature_type: admin
+        :identifier: svc_catalog_archive
+      - :name: Unarchive Services
+        :description: Request to Unarchive Services
+        :feature_type: admin
+        :identifier: svc_catalog_unarchive
   - :name: Catalogs
     :description: Everything under Catalogs Accordion
     :feature_type: node
@@ -442,6 +505,14 @@
       :description: Edit a Cloud Provider
       :feature_type: admin
       :identifier: ems_cloud_edit
+    - :name: Pause
+      :description: Pause Cloud Providers
+      :feature_type: admin
+      :identifier: ems_cloud_pause
+    - :name: Resume
+      :description: Resume Cloud Providers
+      :feature_type: admin
+      :identifier: ems_cloud_resume
     - :name: Add
       :description: Add a Cloud Provider
       :feature_type: admin
@@ -784,6 +855,10 @@
       :description: Display Individual Key Pairs
       :feature_type: view
       :identifier: auth_key_pair_cloud_show
+    - :name: Download
+      :description: Download Private Key
+      :feature_type: view
+      :identifier: auth_key_pair_cloud_download
   - :name: Operate
     :description: Perform Operations on Key Pairs
     :feature_type: control
@@ -987,6 +1062,14 @@
       :description: Edit an Infrastructure Provider
       :feature_type: admin
       :identifier: ems_infra_edit
+    - :name: Pause
+      :description: Pause Infrastructure Providers
+      :feature_type: admin
+      :identifier: ems_infra_pause
+    - :name: Resume
+      :description: Resume Infrastructure Providers
+      :feature_type: admin
+      :identifier: ems_infra_resume
     - :name: Add
       :description: Add an Infrastructure Provider
       :feature_type: admin
@@ -1003,6 +1086,12 @@
       :description: Change Password of Infrastructure Providers
       :feature_type: admin
       :identifier: ems_infra_change_password
+
+# Migration
+- :name: Migration
+  :description: Everything under Migration
+  :feature_type: node
+  :identifier: migration
 
 # Datacenters
 - :name: Datacenters
@@ -1210,10 +1299,6 @@
       :description: Edit a Host / Node
       :feature_type: admin
       :identifier: host_edit
-    - :name: Provision Hosts / Nodes
-      :description: Request to Provision Hosts / Nodes
-      :feature_type: admin
-      :identifier: host_miq_request_new
     - :name: Register Hosts / Nodes
       :description: Register new Hosts / Nodes
       :feature_type: admin
@@ -1598,6 +1683,11 @@
     :description: Edit Report Menus Accordion
     :feature_type: node
     :identifier: miq_report_menu_editor
+# Special Admin Functionality
+  - :name: Report Admin
+    :description: See other user's reports
+    :feature_type: admin
+    :identifier: miq_report_superadmin
   - :name: Import / Export
     :description: Import / Export Accordion
     :feature_type: node
@@ -2336,20 +2426,10 @@
       :hidden: true
       :children:
       - :name: Add
-        :description: Add Dialog
-        :feature_type: admin
-        :hidden: true
-        :identifier: dialog_new
-      - :name: Add
         :description: Add Dialog in the Dialog Editor
         :feature_type: admin
         :hidden: true
         :identifier: dialog_new_editor
-      - :name: Edit
-        :description: Edit Dialog
-        :feature_type: admin
-        :hidden: true
-        :identifier: dialog_edit
       - :name: Edit
         :description: Edit Dialog in the Dialog Editor
         :feature_type: admin
@@ -2365,31 +2445,6 @@
         :feature_type: admin
         :hidden: true
         :identifier: dialog_delete
-      - :name: Add Tab
-        :description: Add Tab to Dialog
-        :feature_type: admin
-        :hidden: true
-        :identifier: dialog_add_tab
-      - :name: Add Box
-        :description: Add Box to Dialog
-        :feature_type: admin
-        :hidden: true
-        :identifier: dialog_add_box
-      - :name: Add Element
-        :description: Add Element to Dialog
-        :feature_type: admin
-        :hidden: true
-        :identifier: dialog_add_element
-      - :name: Discard Item
-        :description: Discard Dialog item
-        :feature_type: admin
-        :hidden: true
-        :identifier: dialog_res_discard
-      - :name: Discard resource
-        :description: Discard Dialog resource
-        :feature_type: admin
-        :hidden: true
-        :identifier: dialog_resource_remove
   - :name: Provisioning Dialogs
     :description: Provisioning Dialogs Accordion
     :feature_type: node
@@ -2869,43 +2924,6 @@
           :feature_type: admin
           :hidden: true
           :identifier: zone_delete
-    - :name: LDAP
-      :description: LDAP
-      :feature_type: node
-      :hidden: true
-      :identifier: ldap
-      :children:
-      - :name: Modify
-        :description: Modify a LDAP
-        :feature_type: admin
-        :identifier: ldap_admin
-        :hidden: true
-        :children:
-        - :name: Add
-          :description: Add a LDAP domain
-          :feature_type: admin
-          :hidden: true
-          :identifier: ldap_domain_add
-        - :name: Edit
-          :description: Edit a LDAP domain
-          :feature_type: admin
-          :hidden: true
-          :identifier: ldap_domain_edit
-        - :name: Delete
-          :description: Delete a LDAP domain
-          :feature_type: admin
-          :hidden: true
-          :identifier: ldap_domain_delete
-        - :name: Edit
-          :description: Edit a LDAP region
-          :feature_type: admin
-          :hidden: true
-          :identifier: ldap_region_edit
-        - :name: Delete
-          :description: Delete a LDAP region
-          :feature_type: admin
-          :hidden: true
-          :identifier: ldap_region_delete
     - :name: Regions
       :description: Regions
       :feature_type: node
@@ -4589,6 +4607,10 @@
         :description: Display Lists of Containers
         :feature_type: view
         :identifier: container_show_list
+      - :name: Show
+        :description: Display Individual Containers
+        :feature_type: view
+        :identifier: container_show
       - :name: Timeline
         :description: Display Timelines for Containers
         :feature_type: view
@@ -4779,6 +4801,10 @@
         :description: Ansible Repositories Refresh
         :feature_type: control
         :identifier: embedded_configuration_script_source_refresh
+      - :name: Edit Tags
+        :description: Edit Tags for the selected Ansible Repositories
+        :feature_type: control
+        :identifier: ansible_repository_tag
   - :name: Playbooks
     :description: Everything under Playbooks
     :feature_type: node
@@ -4805,6 +4831,10 @@
         :description: Ansible Playbooks Refresh
         :feature_type: control
         :identifier: embedded_configuration_script_payload_refresh
+      - :name: Edit Tags
+        :description: Edit Tags for the selected Ansible Playbooks
+        :feature_type: control
+        :identifier: embedded_configuration_script_payload_tag
 
   - :name: Credentials
     :description: Everything under Credentials
@@ -4836,6 +4866,10 @@
         :description: Ansible Credentials Refresh
         :feature_type: control
         :identifier: embedded_automation_manager_credentials_refresh
+      - :name: Edit Tags
+        :description: Edit Tags for the selected Ansible Credentials
+        :feature_type: control
+        :identifier: ansible_credential_tag
 
 # Automation Manager
 - :name: Ansible Tower
@@ -5252,6 +5286,10 @@
         :description: Edit Image Tags
         :feature_type: control
         :identifier: image_tag
+      - :name: Add Image
+        :description: Add Image
+        :feature_type: control
+        :identifier: image_create
     - :name: Modify
       :description: Modify Images
       :feature_type: admin
@@ -5691,105 +5729,105 @@
       :feature_type: admin
       :identifier: ems_storage_new
 
-# EmsBlockStorage
-- :name: Block Storage Managers
-  :description: Everything under Block Storage Managers
-  :feature_type: node
-  :identifier: ems_block_storage
-  :children:
-  - :name: View
-    :description: View Block Storage Managers
-    :feature_type: view
-    :identifier: ems_block_storage_view
+  # EmsBlockStorage
+  - :name: Block Storage Managers
+    :description: Everything under Block Storage Managers
+    :feature_type: node
+    :identifier: ems_block_storage
     :children:
-    - :name: List
-      :description: Display Lists of Block Storage Managers
+    - :name: View
+      :description: View Block Storage Managers
       :feature_type: view
-      :identifier: ems_block_storage_show_list
-    - :name: Show
-      :description: Display Individual Block Storage Managers
-      :feature_type: view
-      :identifier: ems_block_storage_show
-    - :name: Timeline
-      :description: Display Timelines for Block Storage Managers
-      :feature_type: view
-      :identifier: ems_block_storage_timeline
-  - :name: Operate
-    :description: Perform Operations on Block Storage Managers
-    :feature_type: control
-    :identifier: ems_block_storage_control
-    :children:
-    - :name: Edit Tags
-      :description: Edit Tags of Block Storage Managers
+      :identifier: ems_block_storage_view
+      :children:
+      - :name: List
+        :description: Display Lists of Block Storage Managers
+        :feature_type: view
+        :identifier: ems_block_storage_show_list
+      - :name: Show
+        :description: Display Individual Block Storage Managers
+        :feature_type: view
+        :identifier: ems_block_storage_show
+      - :name: Timeline
+        :description: Display Timelines for Block Storage Managers
+        :feature_type: view
+        :identifier: ems_block_storage_timeline
+    - :name: Operate
+      :description: Perform Operations on Block Storage Managers
       :feature_type: control
-      :identifier: ems_block_storage_tag
-    - :name: Manage Policies
-      :description: Manage Policies of Block Storage Managers
-      :feature_type: control
-      :identifier: ems_block_storage_protect
-    - :name: Refresh
-      :description: Refresh Block Storage Managers
-      :feature_type: control
-      :identifier: ems_block_storage_refresh
-  - :name: Modify
-    :description: Modify Block Storage Managers
-    :feature_type: admin
-    :identifier: ems_block_storage_admin
-    :children:
-    - :name: Remove
-      :description: Remove Block Storage Manager
+      :identifier: ems_block_storage_control
+      :children:
+      - :name: Edit Tags
+        :description: Edit Tags of Block Storage Managers
+        :feature_type: control
+        :identifier: ems_block_storage_tag
+      - :name: Manage Policies
+        :description: Manage Policies of Block Storage Managers
+        :feature_type: control
+        :identifier: ems_block_storage_protect
+      - :name: Refresh
+        :description: Refresh Block Storage Managers
+        :feature_type: control
+        :identifier: ems_block_storage_refresh
+    - :name: Modify
+      :description: Modify Block Storage Managers
       :feature_type: admin
-      :identifier: ems_block_storage_delete
+      :identifier: ems_block_storage_admin
+      :children:
+      - :name: Remove
+        :description: Remove Block Storage Manager
+        :feature_type: admin
+        :identifier: ems_block_storage_delete
 
-# EmsObjectStorage
-- :name: Object Storage Managers
-  :description: Everything under Object Storage Managers
-  :feature_type: node
-  :identifier: ems_object_storage
-  :children:
-  - :name: View
-    :description: View Object Storage Managers
-    :feature_type: view
-    :identifier: ems_object_storage_view
+  # EmsObjectStorage
+  - :name: Object Storage Managers
+    :description: Everything under Object Storage Managers
+    :feature_type: node
+    :identifier: ems_object_storage
     :children:
-    - :name: List
-      :description: Display Lists of Object Storage Managers
+    - :name: View
+      :description: View Object Storage Managers
       :feature_type: view
-      :identifier: ems_object_storage_show_list
-    - :name: Show
-      :description: Display Individual Object Storage Managers
-      :feature_type: view
-      :identifier: ems_object_storage_show
-    - :name: Timeline
-      :description: Display Timelines for Object Storage Managers
-      :feature_type: view
-      :identifier: ems_object_storage_timeline
-  - :name: Operate
-    :description: Perform Operations on Object Storage Managers
-    :feature_type: control
-    :identifier: ems_object_storage_control
-    :children:
-    - :name: Edit Tags
-      :description: Edit Tags of Object Storage Managers
+      :identifier: ems_object_storage_view
+      :children:
+      - :name: List
+        :description: Display Lists of Object Storage Managers
+        :feature_type: view
+        :identifier: ems_object_storage_show_list
+      - :name: Show
+        :description: Display Individual Object Storage Managers
+        :feature_type: view
+        :identifier: ems_object_storage_show
+      - :name: Timeline
+        :description: Display Timelines for Object Storage Managers
+        :feature_type: view
+        :identifier: ems_object_storage_timeline
+    - :name: Operate
+      :description: Perform Operations on Object Storage Managers
       :feature_type: control
-      :identifier: ems_object_storage_tag
-    - :name: Manage Policies
-      :description: Manage Policies of Object Storage Managers
-      :feature_type: control
-      :identifier: ems_object_storage_protect
-    - :name: Refresh
-      :description: Refresh Object Storage Managers
-      :feature_type: control
-      :identifier: ems_object_storage_refresh
-  - :name: Modify
-    :description: Modify Object Storage Managers
-    :feature_type: admin
-    :identifier: ems_object_storage_admin
-    :children:
-    - :name: Remove
-      :description: Remove Object Storage Manager
+      :identifier: ems_object_storage_control
+      :children:
+      - :name: Edit Tags
+        :description: Edit Tags of Object Storage Managers
+        :feature_type: control
+        :identifier: ems_object_storage_tag
+      - :name: Manage Policies
+        :description: Manage Policies of Object Storage Managers
+        :feature_type: control
+        :identifier: ems_object_storage_protect
+      - :name: Refresh
+        :description: Refresh Object Storage Managers
+        :feature_type: control
+        :identifier: ems_object_storage_refresh
+    - :name: Modify
+      :description: Modify Object Storage Managers
       :feature_type: admin
-      :identifier: ems_object_storage_delete
+      :identifier: ems_object_storage_admin
+      :children:
+      - :name: Remove
+        :description: Remove Object Storage Manager
+        :feature_type: admin
+        :identifier: ems_object_storage_delete
 
 # EmsPhysicalInfra
 - :name: Physical Infrastructure Providers
@@ -5860,10 +5898,150 @@
       :description: Edit a Physical Infrastructure Provider
       :feature_type: admin
       :identifier: ems_physical_infra_edit
+    - :name: Pause
+      :description: Pause Physical Infrastructure Providers
+      :feature_type: admin
+      :identifier: ems_physical_infra_pause
+    - :name: Resume
+      :description: Resume Physical Infrastructure Providers
+      :feature_type: admin
+      :identifier: ems_physical_infra_resume
     - :name: Add
       :description: Add a Physical Infrastructure Provider
       :feature_type: admin
       :identifier: ems_physical_infra_new
+
+# Physical Racks
+- :name: Physical Racks
+  :description: Everything under Physical Racks
+  :feature_type: node
+  :identifier: physical_rack
+  :children:
+  - :name: View
+    :description: View Physical Rack
+    :feature_type: view
+    :identifier: physical_rack_view
+    :children:
+    - :name: List
+      :description: Display Lists of Physical Racks
+      :feature_type: view
+      :identifier: physical_rack_show_list
+    - :name: Show
+      :description: Display Individual Physical Rack
+      :feature_type: view
+      :identifier: physical_rack_show
+  - :name: Operate
+    :description: Perform Operations on Physical Racks
+    :feature_type: control
+    :identifier: physical_rack_control
+    :children:
+    - :name: Refresh
+      :description: Refresh relationships and power states for all items related to Physical Rack
+      :feature_type: control
+      :identifier: physical_rack_refresh
+
+# Physical Chassis
+- :name: Physical Chassis
+  :description: Everything under Physical Chassis
+  :feature_type: node
+  :identifier: physical_chassis
+  :children:
+  - :name: View
+    :description: View Physical Chassis
+    :feature_type: view
+    :identifier: physical_chassis_view
+    :children:
+    - :name: List
+      :description: Display Lists of Physical Chassis
+      :feature_type: view
+      :identifier: physical_chassis_show_list
+    - :name: Show
+      :description: Display Individual Physical Chassis
+      :feature_type: view
+      :identifier: physical_chassis_show
+  - :name: Operate
+    :description: Perform Operations on Physical Chassis
+    :feature_type: control
+    :identifier: physical_chassis_control
+    :children:
+    - :name: Refresh
+      :description: Refresh relationships and power states for all items related to Physical Chassis
+      :feature_type: control
+      :identifier: physical_chassis_refresh
+    - :name: Blink LED
+      :description: Blink Loc LED
+      :feature_type: control
+      :identifier: physical_chassis_blink_loc_led
+    - :name: Turn On LED
+      :description: Turn On Loc LED
+      :feature_type: control
+      :identifier: physical_chassis_turn_on_loc_led
+    - :name: Turn Off LED
+      :description: Turn Off Loc LED
+      :feature_type: control
+      :identifier: physical_chassis_turn_off_loc_led
+
+# Physical Switches
+- :name: Physical Switches
+  :description: Everything under Physical Switches
+  :feature_type: node
+  :identifier: physical_switch
+  :children:
+  - :name: View
+    :description: View Physical Switch
+    :feature_type: view
+    :identifier: physical_switch_view
+    :children:
+    - :name: List
+      :description: Display Lists of Physical Switches
+      :feature_type: view
+      :identifier: physical_switch_show_list
+    - :name: Show
+      :description: Display Individual Physical Switch
+      :feature_type: view
+      :identifier: physical_switch_show
+  - :name: Operate
+    :description: Perform Operations on Physical Switches
+    :feature_type: control
+    :identifier: physical_switch_control
+    :children:
+    - :name: Refresh
+      :description: Refresh relationships and power states for all items related to Physical Switches / Nodes
+      :feature_type: control
+      :identifier: physical_switch_refresh
+    - :name: Restart
+      :description: Restart Physical Switch
+      :feature_type: control
+      :identifier: physical_switch_restart
+
+# Physical Storages
+- :name: Physical Storages
+  :description: Everything under Physical Storages
+  :feature_type: node
+  :identifier: physical_storage
+  :children:
+  - :name: View
+    :description: View Physical Storage
+    :feature_type: view
+    :identifier: physical_storage_view
+    :children:
+    - :name: List
+      :description: Display Lists of Physical Storages
+      :feature_type: view
+      :identifier: physical_storage_show_list
+    - :name: Show
+      :description: Display Individual Physical Storage
+      :feature_type: view
+      :identifier: physical_storage_show
+  - :name: Operate
+    :description: Perform Operations on Physical Storages
+    :feature_type: control
+    :identifier: physical_storage_control
+    :children:
+    - :name: Refresh
+      :description: Refresh relationships and power states for all items related to Physical Storages
+      :feature_type: control
+      :identifier: physical_storage_refresh
 
 # Physical Servers
 - :name: Physical Servers
@@ -5966,7 +6144,10 @@
       :description: Provision Physical Server
       :feature_type: control
       :identifier: physical_server_provision
-
+    - :name: Physical Server Remote Console
+      :description: Access Physical Server Remote Console
+      :feature_type: control
+      :identifier: physical_server_remote_console
 # Firmwares
 - :name: Firmwares
   :description: Everything under Firmware
@@ -6056,6 +6237,43 @@
     :description: Show Most Recent Alerts
     :feature_type: view
     :identifier: monitor_alerts_most_recent
+
+# Transformation Mappings
+- :name: Transformation Mappings
+  :description: Everything under Transformation Mappings
+  :feature_type: node
+  :identifier: transformation_mapping
+  :children:
+  - :name: View
+    :description: View Transformation Mapping
+    :feature_type: view
+    :identifier: transformation_mapping_view
+    :children:
+    - :name: List
+      :description: Display Lists of Transformation Mappings
+      :feature_type: view
+      :identifier: transformation_mapping_show_list
+    - :name: Show
+      :description: Display Individual Transformation Mappings
+      :feature_type: view
+      :identifier: transformation_mapping_show
+  - :name: Modify
+    :description: Modify Transformation Mappings
+    :feature_type: admin
+    :identifier: transformation_mappings_admin
+    :children:
+    - :name: Create Transformation Mapping
+      :description: Create Transformation Mapping
+      :identifier: transformation_mapping_new
+      :feature_type: admin
+    - :name: Edit Transformation Mapping
+      :description: Edit Transformation Mapping
+      :identifier: transformation_mapping_edit
+      :feature_type: admin
+    - :name: Delete Transformation Mapping
+      :description: Delete Transformation Mapping
+      :identifier: transformation_mapping_delete
+      :feature_type: admin
 
 # API
 - :name: API

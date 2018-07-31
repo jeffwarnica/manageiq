@@ -17,7 +17,8 @@ class Chargeback
     :userid,
     :ext_options,
     :include_metrics,      # enable charging allocated resources with C & U
-    :method_for_allocated_metrics
+    :method_for_allocated_metrics,
+    :group_by_tenant?
   ) do
     def self.new_from_h(hash)
       new(*hash.values_at(*members))
@@ -32,6 +33,7 @@ class Chargeback
         raise "Invalid method for allocated calculations #{method}"
       end
 
+      return :sum_of_maxes_from_grouped_values if method == :max && group_by_tenant?
       method
     end
 
@@ -60,14 +62,14 @@ class Chargeback
       ts = Time.now.in_time_zone(tz)
       case interval
       when 'daily'
-        start_time = (ts - start_interval_offset.days).beginning_of_day.utc
-        end_time   = (ts - end_interval_offset.days).end_of_day.utc
+        start_time = (ts - start_interval_offset.days).beginning_of_day
+        end_time   = (ts - end_interval_offset.days).end_of_day
       when 'weekly'
-        start_time = (ts - start_interval_offset.weeks).beginning_of_week.utc
-        end_time   = (ts - end_interval_offset.weeks).end_of_week.utc
+        start_time = (ts - start_interval_offset.weeks).beginning_of_week
+        end_time   = (ts - end_interval_offset.weeks).end_of_week
       when 'monthly'
-        start_time = (ts - start_interval_offset.months).beginning_of_month.utc
-        end_time   = (ts - end_interval_offset.months).end_of_month.utc
+        start_time = (ts - start_interval_offset.months).beginning_of_month
+        end_time   = (ts - end_interval_offset.months).end_of_month
       else
         raise _("interval '%{interval}' is not supported") % {:interval => interval}
       end
@@ -115,10 +117,18 @@ class Chargeback
       end
     end
 
+    def tenant_for(consumption)
+      consumption.resource.tenant
+    end
+
     def classification_for(consumption)
       tag = consumption.tag_names.find { |x| x.starts_with?(groupby_tag) } # 'department/*'
       tag = tag.split('/').second unless tag.blank? # 'department/finance' -> 'finance'
       tag_hash[tag]
+    end
+
+    def group_by_tenant?
+      self[:groupby] == 'tenant'
     end
 
     private

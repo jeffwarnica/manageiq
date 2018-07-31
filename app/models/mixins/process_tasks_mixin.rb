@@ -1,11 +1,14 @@
 module ProcessTasksMixin
   extend ActiveSupport::Concern
+  include RetirementMixin
 
   module ClassMethods
     # Processes tasks received from the UI and queues them
     def process_tasks(options)
       raise _("No ids given to process_tasks") if options[:ids].blank?
-      if options[:task] == "refresh_ems" && respond_to?("refresh_ems")
+      if options[:task] == 'retire_now'
+        name.constantize.make_retire_request(*options[:ids])
+      elsif options[:task] == "refresh_ems" && respond_to?("refresh_ems")
         refresh_ems(options[:ids])
         msg = "'#{options[:task]}' initiated for #{options[:ids].length} #{ui_lookup(:table => base_class.name).pluralize}"
         task_audit_event(:success, options, :message => msg)
@@ -51,6 +54,8 @@ module ProcessTasksMixin
         invoke_task_local(task, instance, options, args)
 
         msg = "#{instance.name}: '#{options[:task]}' initiated"
+        msg = "[Name: #{instance.name},Id: #{instance.id}, Ems_ref: #{instance.ems_ref}] Record destroyed" if options[:task] == 'destroy'
+
         task_audit_event(:success, options, :target_id => instance.id, :message => msg)
         task.update_status("Queued", "Ok", "Task has been queued") if task
       end

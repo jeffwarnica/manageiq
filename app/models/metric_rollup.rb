@@ -1,3 +1,4 @@
+# @see Metric
 class MetricRollup < ApplicationRecord
   include Metric::Common
   include_concern 'Metric::ChargebackHelper'
@@ -65,12 +66,6 @@ class MetricRollup < ApplicationRecord
                     :timestamp             => start_date.beginning_of_day...end_date.end_of_day)
     metrics = metrics.where(:resource_id => resource_ids) if resource_ids
     metrics.order(:resource_id, :timestamp => :desc)
-  end
-
-  def chargeback_fields_present?
-    return @chargeback_fields_present if defined?(@chargeback_fields_present)
-
-    @chargeback_fields_present = CHARGEBACK_METRIC_FIELDS.any? { |field| send(field).present? && send(field).nonzero? }
   end
 
   def metering_used_fields_present?

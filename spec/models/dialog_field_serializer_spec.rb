@@ -4,6 +4,7 @@ describe DialogFieldSerializer do
 
   describe "#serialize" do
     let(:dialog_field) { DialogFieldTextBox.new(expected_serialized_values.merge(:resource_action => resource_action, :dialog_field_responders => dialog_field_responders)) }
+    let(:dialog_field_with_values) { DialogFieldTextBox.new(expected_serialized_values.merge(:resource_action => resource_action, :dialog_field_responders => dialog_field_responders, :values => "drew")) }
     let(:type) { "DialogFieldTextBox" }
     let(:resource_action) { ResourceAction.new }
     let(:dialog_field_responders) { [] }
@@ -51,7 +52,7 @@ describe DialogFieldSerializer do
       let(:dynamic) { true }
 
       before do
-        allow(dialog_field).to receive(:trigger_automate_value_updates).and_return("dynamic values")
+        allow(dialog_field).to receive(:extract_dynamic_values).and_return("dynamic values")
       end
 
       context 'when wanting the excluded set of attributes' do
@@ -79,6 +80,18 @@ describe DialogFieldSerializer do
                           'values'                  => 'dynamic values'
             ))
         end
+      end
+
+      let(:all_attributes) { true }
+
+      it 'does not call values' do
+        expect(dialog_field_serializer.serialize(dialog_field_with_values, all_attributes))
+          .to include(expected_serialized_values.merge(
+                        'id'                      => dialog_field.id,
+                        'resource_action'         => 'serialized resource action',
+                        'dialog_field_responders' => [],
+                        'values'                  => nil
+          ))
       end
     end
 
@@ -125,13 +138,18 @@ describe DialogFieldSerializer do
 
     context "when the dialog_field is a tag control type" do
       let(:dialog_field) do
-        DialogFieldTagControl.new(expected_serialized_values.merge(:resource_action => resource_action, :dialog_field_responders => dialog_field_responders))
+        DialogFieldTagControl.new(expected_serialized_values.merge(
+          :resource_action         => resource_action,
+          :dialog_field_responders => dialog_field_responders
+        ))
       end
 
       let(:type) { "DialogFieldTagControl" }
-      let(:options) { {:category_id => "123"} }
+      let(:options) { {:category_id => "123", :force_single_value => false} }
       let(:dynamic) { false }
-      let(:category) { double("Category", :name => "best category ever", :description => "best category ever") }
+      let(:category) do
+        double("Category", :name => "best category ever", :description => "best category ever", :single_value => true)
+      end
 
       before do
         allow(Category).to receive(:find_by).with(:id => "123").and_return(category)
@@ -149,7 +167,8 @@ describe DialogFieldSerializer do
                    "options"                 => {
                      :category_id          => "123",
                      :category_name        => "best category ever",
-                     :category_description => "best category ever"
+                     :category_description => "best category ever",
+                     :force_single_value   => true
                    },
                    "default_value"           => "[\"one\", \"two\"]"
           ))

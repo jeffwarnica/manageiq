@@ -13,13 +13,15 @@ class MiqGroup < ApplicationRecord
   has_many   :miq_report_results, :dependent => :nullify
   has_many   :miq_widget_contents, :dependent => :destroy
   has_many   :miq_widget_sets, :as => :owner, :dependent => :destroy
+  has_many   :miq_product_features, :through => :miq_user_role
 
-  virtual_column :miq_user_role_name, :type => :string,  :uses => :miq_user_role
+  virtual_delegate :miq_user_role_name, :to => :entitlement, :allow_nil => true
   virtual_column :read_only,          :type => :boolean
+  virtual_has_one :sui_product_features, :class_name => "Array"
 
-  delegate :self_service?, :limited_self_service?, :disallowed_roles, :to => :miq_user_role, :allow_nil => true
+  delegate :self_service?, :limited_self_service?, :to => :miq_user_role, :allow_nil => true
 
-  validates :description, :presence => true, :unique_within_region => true
+  validates :description, :presence => true, :unique_within_region => { :match_case => false }
   validate :validate_default_tenant, :on => :update, :if => :tenant_id_changed?
   before_destroy :ensure_can_be_destroyed
   after_destroy :reset_current_group_for_users
@@ -58,8 +60,10 @@ class MiqGroup < ApplicationRecord
     super(indifferent_settings)
   end
 
-  def self.with_allowed_roles_for(user_or_group)
-    includes(:miq_user_role).where.not({:miq_user_roles => {:name => user_or_group.disallowed_roles}})
+  def self.with_roles_excluding(identifier)
+    where.not(:id => MiqGroup.joins(:miq_product_features)
+                             .where(:miq_product_features => {:identifier => identifier})
+                             .select(:id))
   end
 
   def self.next_sequence
@@ -133,7 +137,7 @@ class MiqGroup < ApplicationRecord
   end
 
   def self.get_httpd_groups_by_user(user)
-    if MiqEnvironment::Command.is_container?
+    if MiqEnvironment::Command.is_podified?
       get_httpd_groups_by_user_via_dbus_api_service(user)
     else
       get_httpd_groups_by_user_via_dbus(user)
@@ -179,10 +183,6 @@ class MiqGroup < ApplicationRecord
 
   def get_belongsto_filters
     entitlement.try(:get_belongsto_filters) || []
-  end
-
-  def miq_user_role_name
-    miq_user_role.try(:name)
   end
 
   def system_group?
@@ -249,15 +249,26 @@ class MiqGroup < ApplicationRecord
     in_my_region.non_tenant_groups
   end
 
-  def self.with_current_user_groups
-    current_user = User.current_user
-    current_user.admin_user? ? all : where(:id => current_user.miq_group_ids)
+  # parallel to User.with_groups - only show these groups
+  def self.with_groups(miq_group_ids)
+    where(:id => miq_group_ids)
   end
 
   def single_group_users?
     group_user_ids = user_ids
     return false if group_user_ids.empty?
     users.includes(:miq_groups).where(:id => group_user_ids).where.not(:miq_groups => {:id => id}).count != group_user_ids.size
+  end
+
+  def sui_product_features
+    return [] unless miq_user_role.allows?(:identifier => 'sui')
+    MiqProductFeature.feature_all_children('sui').each_with_object([]) do |sui_feature, sui_features|
+      sui_features << sui_feature if miq_user_role.allows?(:identifier => sui_feature)
+    end
+  end
+
+  def self.display_name(number = 1)
+    n_('Group', 'Groups', number)
   end
 
   private

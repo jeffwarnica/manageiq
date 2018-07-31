@@ -282,6 +282,10 @@ module MiqProvisionQuotaMixin
       :status         => 'Ok',
       :process        => true
     ).where.not(:id => id)
+              .where(%{source_type IS NULL OR
+       (source_type = 'VmOrTemplate' AND source_id IN (SELECT id FROM vms)) OR
+       (source_type = 'ServiceTemplate' AND source_id IN (SELECT id FROM service_templates))
+     })
   end
 
   def vm_quota_values(pr, result)
@@ -309,7 +313,7 @@ module MiqProvisionQuotaMixin
   def service_quota_values(request, result)
     return unless request.service_template
     request.service_template.service_resources.each do |sr|
-      if request.service_template.service_type == 'composite'
+      if request.service_template.service_type == ServiceTemplate::SERVICE_TYPE_COMPOSITE
         bundle_quota_values(sr, result)
       else
         next if request.service_template.prov_type.starts_with?("generic")

@@ -1,4 +1,5 @@
 require 'ancestry'
+require 'ancestry_patch'
 
 class Service < ApplicationRecord
   DEFAULT_PROCESS_DELAY_BETWEEN_GROUPS = 120
@@ -49,6 +50,7 @@ class Service < ApplicationRecord
   virtual_has_one    :user
   virtual_has_one    :chargeback_report
   virtual_has_one    :configuration_script
+  virtual_has_one    :reconfigure_dialog
 
   before_validation :set_tenant_from_group
   before_create     :apply_dialog_settings
@@ -56,6 +58,7 @@ class Service < ApplicationRecord
   delegate :provision_dialog, :to => :miq_request, :allow_nil => true
   delegate :user, :to => :miq_request, :allow_nil => true
 
+  include CustomActionsMixin
   include ServiceMixin
   include OwnershipMixin
   include CustomAttributeMixin
@@ -92,6 +95,8 @@ class Service < ApplicationRecord
     unsupported_reason_add(:reconfigure, _("Reconfigure unsupported")) unless validate_reconfigure
   end
 
+  supports :retire
+
   alias parent_service parent
   alias_attribute :service, :parent
   virtual_belongs_to :service
@@ -100,12 +105,14 @@ class Service < ApplicationRecord
     vms.map(&:power_state)
   end
 
+  # renaming method from custom_actions_mixin
+  alias_method :custom_service_actions, :custom_actions
   def custom_actions
-    service_template&.custom_actions(self)
+    service_template ? service_template.custom_actions(self) : custom_service_actions(self)
   end
 
   def custom_action_buttons
-    service_template&.custom_action_buttons(self)
+    service_template ? service_template.custom_action_buttons(self) : generic_custom_buttons
   end
 
   def power_state
@@ -317,6 +324,15 @@ class Service < ApplicationRecord
     service_template.resource_actions.find_by(:action => 'Reconfigure') if service_template
   end
 
+  def reconfigure_dialog
+    resource_action = reconfigure_resource_action
+    options = {:target => self, :reconfigure => true}
+
+    workflow = ResourceActionWorkflow.new(self.options[:dialog], User.current_user, resource_action, options)
+
+    DialogSerializer.new.serialize(Array[workflow.dialog], true)
+  end
+
   def raise_final_process_event(action)
     case action.to_s
     when "start" then raise_started_event
@@ -372,11 +388,11 @@ class Service < ApplicationRecord
   end
 
   def chargeback_report_name
-    "Chargeback-Vm-Monthly-#{name}"
+    "Chargeback-Vm-Monthly-#{name}-#{id}"
   end
 
   def generate_chargeback_report(options = {})
-    _log.info("Generation of chargeback report for service #{name} started...")
+    _log.info("Generation of chargeback report for service #{name} with #{id} started...")
     MiqReportResult.where(:name => chargeback_report_name).destroy_all
     report = MiqReport.new(chargeback_yaml)
     options[:report_sync] = true
@@ -392,14 +408,23 @@ class Service < ApplicationRecord
   end
 
   def queue_chargeback_report_generation(options = {})
+    task = MiqTask.create(
+      :name    => "Generating chargeback report with id: #{id}",
+      :state   => MiqTask::STATE_QUEUED,
+      :status  => MiqTask::STATUS_OK,
+      :message => "Queueing Chargeback of #{self.class.name} with id: #{id}"
+    )
+
     MiqQueue.submit_job(
       :service     => "reporting",
       :class_name  => self.class.name,
       :instance_id => id,
+      :task_id     => task.id,
       :method_name => "generate_chargeback_report",
       :args        => options
     )
     _log.info("Added to queue: generate_chargeback_report for service #{name}")
+    task
   end
 
   #

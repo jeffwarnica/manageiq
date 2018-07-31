@@ -540,7 +540,7 @@ class Storage < ApplicationRecord
               {:name => name, :zone => MiqServer.my_zone}
     end
 
-    ems = emss.detect { |e| smartstate_analysis_count_for_ems_id(e.id) >= ::Settings.storage.max_parallel_scans_per_ems }
+    ems = emss.detect { |e| smartstate_analysis_count_for_ems_id(e.id) < ::Settings.storage.max_parallel_scans_per_ems }
     if ems.nil?
       raise MiqException::MiqQueueRetryLater.new(:deliver_on => Time.now.utc + 1.minute) if qmessage?(method_name)
       ems = emss.random_element
@@ -847,5 +847,9 @@ class Storage < ApplicationRecord
   # @param [String, Storage] store_type upcased version of the storage type
   def self.supports?(store_type)
     Storage::SUPPORTED_STORAGE_TYPES.include?(store_type)
+  end
+
+  def self.display_name(number = 1)
+    n_('Datastore', 'Datastores', number)
   end
 end

@@ -17,7 +17,7 @@ class MiqEvent < EventStream
   SUPPORTED_POLICY_AND_ALERT_CLASSES = [Host, VmOrTemplate, Storage,
                                         EmsCluster, ResourcePool, MiqServer,
                                         ExtManagementSystem,
-                                        ContainerReplicator, ContainerGroup,
+                                        ContainerReplicator, ContainerGroup, ContainerProject,
                                         ContainerNode, ContainerImage, PhysicalServer].freeze
 
   def self.raise_evm_event(target, raw_event, inputs = {}, options = {})
@@ -175,5 +175,9 @@ class MiqEvent < EventStream
 
     source_event_id = full_data.fetch_path(:source_event_id)
     @source_event = EventStream.find_by(:id => source_event_id) if source_event_id
+  end
+
+  def self.display_name(number = 1)
+    n_('Event', 'Events', number)
   end
 end

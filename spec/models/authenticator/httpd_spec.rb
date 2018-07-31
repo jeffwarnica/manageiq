@@ -12,7 +12,7 @@ describe Authenticator::Httpd do
     ActionDispatch::Request.new(Rack::MockRequest.env_for("/", env))
   end
 
-  before(:each) do
+  before do
     # If anything goes looking for the currently configured
     # Authenticator during any of these tests, we'd really rather they
     # found the one we're working on.
@@ -23,9 +23,11 @@ describe Authenticator::Httpd do
     # Authenticator#uses_stored_password? whether it's allowed to do anything.
 
     allow(User).to receive(:authenticator).and_return(subject)
+
+    EvmSpecHelper.create_guid_miq_server_zone
   end
 
-  before(:each) do
+  before do
     FactoryGirl.create(:miq_group, :description => 'wibble')
     FactoryGirl.create(:miq_group, :description => 'wobble')
 
@@ -547,6 +549,54 @@ describe Authenticator::Httpd do
 
         it "handles a comma separated grouplist" do
           expect(subject).to receive(:find_external_identity).with(username, user_attrs, ["wibble@fqdn", "bubble@fqdn"])
+          authenticate
+        end
+      end
+
+      context "when group names have escaped special characters" do
+        let(:config) { {:httpd_role => true} }
+        let(:headers) do
+          super().merge('X-Remote-User-Groups' => CGI.escape('spécial_char@fqdn:moré@fqdn'))
+        end
+        let(:user_attrs) do
+          { :username  => "testuser",
+            :fullname  => "Test User",
+            :firstname => "Alice",
+            :lastname  => "Aardvark",
+            :email     => "testuser@example.com",
+            :domain    => "example.com" }
+        end
+
+        it "handles group names with escaped special characters" do
+          expect(subject).to receive(:find_external_identity).with(username, user_attrs, ["spécial_char@fqdn", "moré@fqdn"])
+          authenticate
+        end
+      end
+
+      context "when there are no group names" do
+        let(:config) { {:httpd_role => true} }
+        let(:headers) do
+          {
+            'X-Remote-User'           => username,
+            'X-Remote-User-FullName'  => 'Test User',
+            'X-Remote-User-FirstName' => 'Alice',
+            'X-Remote-User-LastName'  => 'Aardvark',
+            'X-Remote-User-Email'     => 'testuser@example.com',
+            'X-Remote-User-Domain'    => 'example.com',
+            'X-Remote-User-Groups'    => nil,
+          }
+        end
+        let(:user_attrs) do
+          { :username  => "testuser",
+            :fullname  => "Test User",
+            :firstname => "Alice",
+            :lastname  => "Aardvark",
+            :email     => "testuser@example.com",
+            :domain    => "example.com" }
+        end
+
+        it "handles nil group names" do
+          expect(subject).to receive(:find_external_identity).with(username, user_attrs, [])
           authenticate
         end
       end

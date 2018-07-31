@@ -1,5 +1,5 @@
 describe MiqReportResult do
-  before :each do
+  before do
     EvmSpecHelper.local_miq_server
 
     @user1 = FactoryGirl.create(:user_with_group)
@@ -28,7 +28,7 @@ describe MiqReportResult do
   end
 
   context "report result created by User 1 with current group 1" do
-    before :each do
+    before do
       @report_1 = FactoryGirl.create(:miq_report)
       group_1 = FactoryGirl.create(:miq_group)
       group_2 = FactoryGirl.create(:miq_group)
@@ -64,7 +64,7 @@ describe MiqReportResult do
       end
 
       it "returns report all results, admin user logged" do
-        admin_role = FactoryGirl.create(:miq_user_role, :name => "EvmRole-administrator", :read_only => false)
+        admin_role = FactoryGirl.create(:miq_user_role, :role => "administrator", :read_only => false)
         User.current_user.current_group.miq_user_role = admin_role
         report_result = MiqReportResult.with_current_user_groups
         expected_reports = [@report_result1, @report_result2, @report_result3, @report_result_nil_report_id]
@@ -74,7 +74,7 @@ describe MiqReportResult do
   end
 
   context "persisting generated report results" do
-    before(:each) do
+    before do
       5.times do |i|
         vm = FactoryGirl.build(:vm_vmware)
         vm.evm_owner_id = @user1.id               if i > 2
@@ -105,8 +105,25 @@ describe MiqReportResult do
       expect(report_result.report_results.table.data).not_to be_nil
     end
 
+    it "should not include `extras[:grouping]` in the report column" do
+      MiqReport.seed_report(name = "Vendor and Guest OS")
+      rpt = MiqReport.where(:name => name).last
+      rpt.generate_table(:userid => "test")
+      report_result = rpt.build_create_results(:userid => "test")
+
+      report_result.report
+      report_result.report.extras[:grouping] = { "extra data" => "not saved" }
+      report_result.save
+
+      result_reload = MiqReportResult.last
+
+      expect(report_result.report.kind_of?(MiqReport)).to be_truthy
+      expect(result_reload.report.extras[:grouping]).to be_nil
+      expect(report_result.report.extras[:grouping]).to eq("extra data" => "not saved")
+    end
+
     context "for miq_report_result is used different miq_group_id than user's current id" do
-      before(:each) do
+      before do
         MiqUserRole.seed
         role = MiqUserRole.find_by(:name => "EvmRole-operator")
         @miq_group = FactoryGirl.create(:miq_group, :miq_user_role => role, :description => "Group1")

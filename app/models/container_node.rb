@@ -32,6 +32,8 @@ class ContainerNode < ApplicationRecord
   has_many :metric_rollups, :as => :resource
   has_many :vim_performance_states, :as => :resource
   has_many :miq_alert_statuses, :as => :resource
+  delegate :my_zone, :to => :ext_management_system, :allow_nil => true
+
 
   virtual_column :ready_condition_status, :type => :string, :uses => :container_conditions
   virtual_column :system_distribution, :type => :string
@@ -81,7 +83,6 @@ class ContainerNode < ApplicationRecord
   end
 
   def cockpit_url
-    URI::HTTP.build(:host => kubernetes_hostname, :port => 9090)
     address = kubernetes_hostname || name
     MiqCockpit::WS.url(cockpit_server, cockpit_worker, address)
   end

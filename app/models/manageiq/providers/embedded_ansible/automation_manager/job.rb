@@ -3,11 +3,6 @@ class ManageIQ::Providers::EmbeddedAnsible::AutomationManager::Job < ManageIQ::P
 
   require_nested :Status
 
-  def retire_now(requester = nil)
-    update_attributes(:retirement_requester => requester)
-    finish_retirement
-  end
-
   # Intend to be called by UI to display stdout. The stdout is stored in MiqTask#task_results or #message if error
   # Since the task_results may contain a large block of data, it is desired to remove the task upon receiving the data
   def raw_stdout_via_worker(userid, format = 'txt')
@@ -22,13 +17,6 @@ class ManageIQ::Providers::EmbeddedAnsible::AutomationManager::Job < ManageIQ::P
       ).id
     end
 
-    options = {:userid => userid || 'system', :action => 'ansible_stdout'}
-    queue_options = {:class_name  => self.class,
-                     :method_name => 'raw_stdout',
-                     :instance_id => id,
-                     :args        => [format],
-                     :priority    => MiqQueue::HIGH_PRIORITY,
-                     :role        => 'embedded_ansible'}
-    MiqTask.generic_action_with_callback(options, queue_options)
+    super(userid, format, 'embedded_ansible')
   end
 end

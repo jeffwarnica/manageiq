@@ -19,7 +19,7 @@ class DialogFieldDropDownList < DialogFieldSortedItem
   end
 
   def initial_values
-    [[nil, "<None>"]]
+    [[nil, N_("<None>")]]
   end
 
   def refresh_json_value(checked_value)
@@ -90,6 +90,7 @@ class DialogFieldDropDownList < DialogFieldSortedItem
   end
 
   def coerce_default_value_into_proper_format
+    return unless default_value
     unless JSON.parse(default_value).kind_of?(Array)
       self.default_value = Array.wrap(default_value).to_json
     end

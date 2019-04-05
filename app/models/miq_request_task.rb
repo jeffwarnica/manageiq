@@ -25,6 +25,15 @@ class MiqRequestTask < ApplicationRecord
   include MiqRequestMixin
   include TenancyMixin
 
+  CANCEL_STATUS_REQUESTED  = "cancel_requested".freeze
+  CANCEL_STATUS_PROCESSING = "canceling".freeze
+  CANCEL_STATUS_FINISHED   = "canceled".freeze
+  CANCEL_STATUS            = [CANCEL_STATUS_REQUESTED, CANCEL_STATUS_PROCESSING, CANCEL_STATUS_FINISHED].freeze
+
+  validates :cancelation_status, :inclusion => { :in        => CANCEL_STATUS,
+                                                 :allow_nil => true,
+                                                 :message   => "should be one of #{CANCEL_STATUS.join(", ")}" }
+
   def approved?
     if miq_request.class.name.include?('Template') && miq_request_task
       miq_request_task.miq_request.approved?
@@ -68,7 +77,7 @@ class MiqRequestTask < ApplicationRecord
     req_status = status.slice('Error', 'Timeout', 'Warn').keys.first || 'Ok'
 
     if req_state == "finished" && state != "finished"
-      req_state = (req_status == 'Ok') ? 'provisioned' : "finished"
+      req_state = req_status == 'Ok' ? completed_state : "finished"
       $log.info("Child tasks finished but current task still processing. Setting state to: [#{req_state}]...")
     end
 
@@ -83,6 +92,10 @@ class MiqRequestTask < ApplicationRecord
     end
 
     update_and_notify_parent(:state => req_state, :status => req_status, :message => display_message(msg))
+  end
+
+  def completed_state
+    "provisioned"
   end
 
   def execute_callback(state, message, _result)
@@ -205,11 +218,19 @@ class MiqRequestTask < ApplicationRecord
   end
 
   def cancel
-    raise _("Cancel operation is not supported for #{self.class.name}")
+    raise _("Cancel operation is not supported for %{class}") % {:class => self.class.name}
+  end
+
+  def cancel_requested?
+    cancelation_status == MiqRequestTask::CANCEL_STATUS_REQUESTED
   end
 
   def canceling?
-    false
+    cancelation_status == MiqRequestTask::CANCEL_STATUS_PROCESSING
+  end
+
+  def canceled?
+    cancelation_status == MiqRequestTask::CANCEL_STATUS_FINISHED
   end
 
   private

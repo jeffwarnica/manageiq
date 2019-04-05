@@ -8,10 +8,10 @@ module TaskHelpers
         export_dir = options[:directory]
 
         tags = if options[:all]
-                 Classification.includes(:tag).where(:parent_id => 0).where.not(:tags => {:name => SPECIAL_TAGS})
+                 Classification.is_category.includes(:tag).where.not(:tags => {:name => SPECIAL_TAGS})
                else
                  export_tags = []
-                 Classification.includes(:tag).where(:parent_id => 0).where.not(:tags => {:name => SPECIAL_TAGS}).each do |cat|
+                 Classification.is_category.includes(:tag).where.not(:tags => {:name => SPECIAL_TAGS}).each do |cat|
                    if !cat.default
                      export_tags << cat
                    else
@@ -27,10 +27,13 @@ module TaskHelpers
                end
 
         tags.each do |category|
-          fname = Exports.safe_filename(category.description, options[:keep_spaces])
-          cat = category.export_to_array
-          cat.first["ns"] = category.ns unless category.ns == '/managed'
-          File.write("#{export_dir}/#{fname}.yaml", cat.to_yaml)
+          $log.info("Exporting Tag Category: #{category.description} (ID: #{category.id})")
+
+          category_array = category.export_to_array
+          category_array.first["ns"] = category.ns unless category.ns == '/managed'
+
+          filename = Exports.safe_filename(category.description, options[:keep_spaces])
+          File.write("#{export_dir}/#{filename}.yaml", category_array.to_yaml)
         end
       end
     end

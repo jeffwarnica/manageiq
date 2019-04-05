@@ -6,6 +6,7 @@ MIQ_WORKER_TYPES = {
   "ManageIQ::Providers::Amazon::CloudManager::EventCatcher"                     => %i(manageiq_default),
   "ManageIQ::Providers::Amazon::CloudManager::MetricsCollectorWorker"           => %i(manageiq_default),
   "ManageIQ::Providers::Amazon::CloudManager::RefreshWorker"                    => %i(manageiq_default),
+  "ManageIQ::Providers::Amazon::StorageManager::S3::RefreshWorker"              => %i(manageiq_default),
   "ManageIQ::Providers::AnsibleTower::AutomationManager::EventCatcher"          => %i(manageiq_default),
   "ManageIQ::Providers::AnsibleTower::AutomationManager::RefreshWorker"         => %i(manageiq_default),
   "ManageIQ::Providers::Azure::CloudManager::EventCatcher"                      => %i(manageiq_default),
@@ -44,6 +45,7 @@ MIQ_WORKER_TYPES = {
   "ManageIQ::Providers::Openstack::NetworkManager::EventCatcher"                => %i(manageiq_default),
   "ManageIQ::Providers::Openstack::NetworkManager::MetricsCollectorWorker"      => %i(manageiq_default),
   "ManageIQ::Providers::Openstack::StorageManager::CinderManager::EventCatcher" => %i(manageiq_default),
+  "ManageIQ::Providers::Redfish::PhysicalInfraManager::EventCatcher"            => %i(manageiq_default),
   "ManageIQ::Providers::Redfish::PhysicalInfraManager::RefreshWorker"           => %i(manageiq_default),
   "ManageIQ::Providers::Redhat::InfraManager::EventCatcher"                     => %i(manageiq_default),
   "ManageIQ::Providers::Redhat::InfraManager::MetricsCollectorWorker"           => %i(manageiq_default),
@@ -70,7 +72,7 @@ MIQ_WORKER_TYPES = {
   "MiqUiWorker"                                                                 => %i(manageiq_default ui_dependencies),
   "MiqVimBrokerWorker"                                                          => %i(manageiq_default),
   "MiqWebServiceWorker"                                                         => %i(manageiq_default),
-  "MiqWebsocketWorker"                                                          => %i(manageiq_default),
+  "MiqRemoteConsoleWorker"                                                      => %i(manageiq_default),
 }.freeze
 
 MIQ_WORKER_TYPES_IN_KILL_ORDER = %w(
@@ -134,6 +136,7 @@ MIQ_WORKER_TYPES_IN_KILL_ORDER = %w(
   ManageIQ::Providers::Openstack::CloudManager::EventCatcher
   ManageIQ::Providers::Openstack::NetworkManager::EventCatcher
   ManageIQ::Providers::Openstack::StorageManager::CinderManager::EventCatcher
+  ManageIQ::Providers::Redfish::PhysicalInfraManager::EventCatcher
   ManageIQ::Providers::Redhat::NetworkManager::EventCatcher
   ManageIQ::Providers::Openstack::InfraManager::EventCatcher
   ManageIQ::Providers::Amazon::CloudManager::EventCatcher
@@ -148,6 +151,6 @@ MIQ_WORKER_TYPES_IN_KILL_ORDER = %w(
   ManageIQ::Providers::Openshift::MonitoringManager::EventCatcher
   ManageIQ::Providers::Lenovo::PhysicalInfraManager::EventCatcher
   MiqUiWorker
-  MiqWebsocketWorker
+  MiqRemoteConsoleWorker
   MiqCockpitWsWorker
 ).freeze

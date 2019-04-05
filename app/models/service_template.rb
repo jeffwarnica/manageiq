@@ -41,8 +41,11 @@ class ServiceTemplate < ApplicationRecord
   include NewWithTypeStiMixin
   include TenancyMixin
   include ArchivedMixin
+  include CiFeatureMixin
   include_concern 'Filter'
+  include_concern 'Copy'
 
+  validates :name, :presence => true
   belongs_to :tenant
   # # These relationships are used to specify children spawned from a parent service
   # has_many   :child_services, :class_name => "ServiceTemplate", :foreign_key => :service_template_id
@@ -56,8 +59,10 @@ class ServiceTemplate < ApplicationRecord
   has_one :picture, :dependent => :destroy, :as => :resource, :autosave => true
 
   belongs_to :service_template_catalog
+  belongs_to :zone
 
   has_many   :dialogs, -> { distinct }, :through => :resource_actions
+  has_many   :miq_schedules, :as => :resource, :dependent => :destroy
 
   has_many   :miq_requests, :as => :source, :dependent => :nullify
   has_many   :active_requests, -> { where(:request_state => MiqRequest::ACTIVE_STATES) }, :as => :source, :class_name => "MiqRequest"
@@ -68,6 +73,7 @@ class ServiceTemplate < ApplicationRecord
   virtual_column   :archived,                     :type => :boolean
   virtual_column   :active,                       :type => :boolean
 
+  default_value_for :internal, false
   default_value_for :service_type, SERVICE_TYPE_ATOMIC
   default_value_for(:generic_subtype) { |st| 'custom' if st.prov_type == 'generic' }
 
@@ -77,6 +83,7 @@ class ServiceTemplate < ApplicationRecord
   scope :without_service_template_catalog_id,       ->         { where(:service_template_catalog_id => nil) }
   scope :with_existent_service_template_catalog_id, ->         { where.not(:service_template_catalog_id => nil) }
   scope :displayed,                                 ->         { where(:display => true) }
+  scope :public_service_templates,                  ->         { where(:internal => [false, nil]) }
 
   def self.catalog_item_types
     ci_types = Set.new(Rbac.filtered(ExtManagementSystem.all).flat_map(&:supported_catalog_types))
@@ -163,6 +170,10 @@ class ServiceTemplate < ApplicationRecord
     archive!
   end
 
+  def retireable?
+    false
+  end
+
   def request_class
     ServiceTemplateProvisionRequest
   end
@@ -191,22 +202,23 @@ class ServiceTemplate < ApplicationRecord
 
     nh['initiator'] = service_task.options[:initiator] if service_task.options[:initiator]
 
-    svc = Service.create(nh)
-    svc.service_template = self
+    service = Service.create(nh) do |svc|
+      svc.service_template = self
+      set_ownership(svc, service_task.get_user)
 
-    service_resources.each do |sr|
-      nh = sr.attributes.dup
-      %w(id created_at updated_at service_template_id).each { |key| nh.delete(key) }
-      svc.add_resource(sr.resource, nh) unless sr.resource.nil?
+      service_resources.each do |sr|
+        nh = sr.attributes.dup
+        %w(id created_at updated_at service_template_id).each { |key| nh.delete(key) }
+        svc.add_resource(sr.resource, nh) unless sr.resource.nil?
+      end
     end
 
-    if parent_svc
-      service_resource = ServiceResource.find_by(:id => service_task.options[:service_resource_id])
-      parent_svc.add_resource!(svc, service_resource)
+    service.tap do |svc|
+      if parent_svc
+        service_resource = ServiceResource.find_by(:id => service_task.options[:service_resource_id])
+        parent_svc.add_resource!(svc, service_resource)
+      end
     end
-
-    svc.save
-    svc
   end
 
   def composite?
@@ -234,8 +246,6 @@ class ServiceTemplate < ApplicationRecord
                                                             parent_svc)
     end
     svc = create_service(service_task, parent_svc)
-
-    set_ownership(svc, service_task.get_user)
 
     service_task.destination = svc
 
@@ -289,7 +299,6 @@ class ServiceTemplate < ApplicationRecord
     else
       $log.info("Setting Service Owning User to Name=#{user.name}, ID=#{user.id}")
     end
-    service.save
   end
 
   def self.default_provisioning_entry_point(service_type)
@@ -376,7 +385,8 @@ class ServiceTemplate < ApplicationRecord
   end
   private_class_method :create_from_options
 
-  def provision_request(user, options = nil, request_options = nil)
+  def provision_request(user, options = nil, request_options = {})
+    request_options[:provision_workflow] = true
     result = order(user, options, request_options)
     raise result[:errors].join(", ") if result[:errors].any?
     result[:request]
@@ -391,12 +401,7 @@ class ServiceTemplate < ApplicationRecord
     )
   end
 
-  def miq_schedules
-    schedule_ids = Reserve.where(:resource_type => "MiqSchedule").collect { |r| r.resource_id if r.reserved == {:resource_id => id} }.compact
-    MiqSchedule.where(:towhat => "ServiceTemplate", :id => schedule_ids)
-  end
-
-  def order(user_or_id, options = nil, request_options = nil, schedule_time = nil)
+  def order(user_or_id, options = nil, request_options = {}, schedule_time = nil)
     user     = user_or_id.kind_of?(User) ? user_or_id : User.find(user_or_id)
     workflow = provision_workflow(user, options, request_options)
     if schedule_time
@@ -410,8 +415,7 @@ class ServiceTemplate < ApplicationRecord
         :name         => "Order #{self.class.name} #{id} at #{time}",
         :description  => "Order #{self.class.name} #{id} at #{time}",
         :sched_action => {:args => [user.id, options, request_options], :method => "queue_order"},
-        :resource_id  => id,
-        :towhat       => "ServiceTemplate",
+        :resource     => self,
         :run_at       => {
           :interval   => {:unit => "once"},
           :start_time => time,
@@ -424,18 +428,18 @@ class ServiceTemplate < ApplicationRecord
     end
   end
 
-  def provision_workflow(user, dialog_options = nil, request_options = nil)
+  def provision_workflow(user, dialog_options = nil, request_options = {})
     dialog_options ||= {}
-    request_options ||= {}
-    ra_options = {
-      :target          => self,
-      :initiator       => request_options[:initiator],
-      :submit_workflow => request_options[:submit_workflow]
-    }
+    request_options.delete(:provision_workflow) if request_options[:submit_workflow]
+    ra_options = request_options.slice(:initiator, :init_defaults, :provision_workflow, :submit_workflow).merge(:target => self)
 
     ResourceActionWorkflow.new(dialog_options, user, provision_action, ra_options).tap do |wf|
       wf.request_options = request_options
     end
+  end
+
+  def dup
+    super.tap { |obj| obj.guid = nil }
   end
 
   def add_resource(rsc, options = {})
@@ -445,6 +449,12 @@ class ServiceTemplate < ApplicationRecord
 
   def self.display_name(number = 1)
     n_('Service Catalog Item', 'Service Catalog Items', number)
+  end
+
+  def my_zone
+    # Catalog items can specify a zone to run in.
+    # Catalog bundle are used for grouping catalog items and are therefore treated as zone-agnostic.
+    zone&.name if atomic?
   end
 
   private

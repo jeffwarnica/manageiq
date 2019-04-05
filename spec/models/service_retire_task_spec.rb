@@ -1,17 +1,15 @@
 describe ServiceRetireTask do
-  let(:user) { FactoryGirl.create(:user_with_group) }
-  let(:vm) { FactoryGirl.create(:vm) }
-  let(:service) { FactoryGirl.create(:service) }
-  let(:miq_request) { FactoryGirl.create(:service_retire_request, :requester => user) }
-  let(:miq_request_task) { FactoryGirl.create(:miq_request_task, :miq_request_id => miq_request.id) }
-  let(:service_retire_task) { FactoryGirl.create(:service_retire_task, :source => service, :miq_request_task_id => miq_request_task.id, :miq_request_id => miq_request.id, :options => {:src_ids => [service.id] }) }
+  let(:user) { FactoryBot.create(:user_with_group) }
+  let(:vm) { FactoryBot.create(:vm) }
+  let(:service) { FactoryBot.create(:service) }
+  let(:miq_request) { FactoryBot.create(:service_retire_request, :requester => user) }
+  let(:service_retire_task) { FactoryBot.create(:service_retire_task, :source => service, :miq_request => miq_request, :options => {:src_ids => [service.id] }) }
   let(:reason) { "Why Not?" }
-  let(:approver) { FactoryGirl.create(:user_miq_request_approver) }
-  let(:zone) { FactoryGirl.create(:zone, :name => "fred") }
+  let(:approver) { FactoryBot.create(:user_miq_request_approver) }
+  let(:zone) { FactoryBot.create(:zone, :name => "fred") }
 
   it "should initialize properly" do
-    expect(service_retire_task.state).to eq('pending')
-    expect(service_retire_task.status).to eq('Ok')
+    expect(service_retire_task).to have_attributes(:state => 'pending', :status => 'Ok')
   end
 
   describe "respond to update_and_notify_parent" do
@@ -27,8 +25,30 @@ describe ServiceRetireTask do
       it "should call task_finished" do
         service_retire_task.update_and_notify_parent(:state => "finished", :status => "Ok", :message => "yabadabadoo")
 
-        expect(service_retire_task.status).to eq("Completed")
+        expect(service_retire_task.status).to eq("Ok")
       end
+    end
+  end
+
+  shared_examples_for "no_remove_resource" do
+    it "creates 1 service retire subtask" do
+      ap_service.add_resource!(FactoryBot.create(:vm_vmware))
+      ap_service_retire_task.after_request_task_create
+
+      expect(ap_service_retire_task.description).to eq("Service Retire for: #{ap_service.name} - ")
+      expect(ServiceRetireTask.count).to eq(1)
+      expect(VmRetireTask.count).to eq(0)
+    end
+  end
+
+  shared_examples_for "yes_remove_resource" do
+    it "creates 1 service retire subtask and 1 vm retire subtask" do
+      ap_service.add_resource!(FactoryBot.create(:vm_vmware))
+      ap_service_retire_task.after_request_task_create
+
+      expect(ap_service_retire_task.description).to eq("Service Retire for: #{ap_service.name} - ")
+      expect(ServiceRetireTask.count).to eq(1)
+      expect(VmRetireTask.count).to eq(1)
     end
   end
 
@@ -39,65 +59,127 @@ describe ServiceRetireTask do
 
         expect(service_retire_task.description).to eq("Service Retire for: #{service.name} - ")
         expect(VmRetireTask.count).to eq(0)
+        expect(ServiceRetireTask.count).to eq(1)
       end
     end
 
     context "with resource" do
       before do
+        MiqRegion.seed
         allow(MiqServer).to receive(:my_zone).and_return(Zone.seed.name)
         miq_request.approve(approver, reason)
       end
 
-      it "creates subtask" do
-        resource = FactoryGirl.create(:service_resource, :resource_type => "VmOrTemplate", :service_id => service.id, :resource_id => vm.id)
-        service.service_resources << resource
+      it "creates service retire subtask" do
+        service.add_resource!(FactoryBot.create(:service_orchestration))
+        service_retire_task.after_request_task_create
+
+        expect(service_retire_task.description).to eq("Service Retire for: #{service.name} - ")
+        expect(ServiceRetireTask.count).to eq(2)
+      end
+
+      context "ansible playbook service" do
+        context "no_with_playbook" do
+          let(:ap_service) { FactoryBot.create(:service_ansible_playbook, :options => {:config_info => {:retirement => {:remove_resources => "no_with_playbook"} }}) }
+          let(:ap_service_retire_task) { FactoryBot.create(:service_retire_task, :source => ap_service, :miq_request => miq_request, :options => {:src_ids => [ap_service.id] }) }
+
+          it_behaves_like "no_remove_resource"
+        end
+
+        context "no_without_playbook" do
+          let(:ap_service) { FactoryBot.create(:service_ansible_playbook, :options => {:config_info => {:retirement => {:remove_resources => "no_without_playbook"} }}) }
+          let(:ap_service_retire_task) { FactoryBot.create(:service_retire_task, :source => ap_service, :miq_request => miq_request, :options => {:src_ids => [ap_service.id] }) }
+
+          it_behaves_like "no_remove_resource"
+        end
+
+        context "yes_with_playbook" do
+          let(:ap_service) { FactoryBot.create(:service_ansible_playbook, :options => {:config_info => {:retirement => {:remove_resources => "yes_with_playbook"} }}) }
+          let(:ap_service_retire_task) { FactoryBot.create(:service_retire_task, :source => ap_service, :miq_request => miq_request, :options => {:src_ids => [ap_service.id] }) }
+
+          it_behaves_like "yes_remove_resource"
+        end
+
+        context "yes_without_playbook" do
+          let(:ap_service) { FactoryBot.create(:service_ansible_playbook, :options => {:config_info => {:retirement => {:remove_resources => "yes_without_playbook"} }}) }
+          let(:ap_service_retire_task) { FactoryBot.create(:service_retire_task, :source => ap_service, :miq_request => miq_request, :options => {:src_ids => [ap_service.id] }) }
+
+          it_behaves_like "yes_remove_resource"
+        end
+      end
+
+      it "creates service retire subtask" do
+        service.add_resource!(FactoryBot.create(:service))
+        service_retire_task.after_request_task_create
+
+        expect(service_retire_task.description).to eq("Service Retire for: #{service.name} - ")
+        expect(ServiceRetireTask.count).to eq(2)
+      end
+
+      it "creates stack retire subtask" do
+        service.add_resource!(FactoryBot.create(:orchestration_stack))
+        service_retire_task.after_request_task_create
+
+        expect(service_retire_task.description).to eq("Service Retire for: #{service.name} - ")
+        expect(OrchestrationStackRetireTask.count).to eq(1)
+        expect(ServiceRetireTask.count).to eq(1)
+      end
+
+      it "doesn't create subtask for miq_provision_request_template" do
+        admin = FactoryBot.create(:user_admin)
+        vm_template = FactoryBot.create(:vm_openstack, :ext_management_system => FactoryBot.create(:ext_management_system))
+        service.add_resource!(FactoryBot.create(:miq_provision_request_template, :requester => admin, :src_vm_id => vm_template.id))
+        service_retire_task.after_request_task_create
+
+        expect(service_retire_task.description).to eq("Service Retire for: #{service.name} - ")
+        expect(MiqRetireTask.count).to eq(1)
+        expect(ServiceRetireTask.count).to eq(1)
+      end
+
+      it "creates vm retire subtask" do
+        service.add_resource!(FactoryBot.create(:vm_openstack))
         service_retire_task.after_request_task_create
 
         expect(service_retire_task.description).to eq("Service Retire for: #{service.name} - ")
         expect(VmRetireTask.count).to eq(1)
+        expect(ServiceRetireTask.count).to eq(1)
       end
     end
 
     context "bundled service retires all children" do
-      let(:zone) { FactoryGirl.create(:small_environment) }
-      let(:vm1) { FactoryGirl.create(:vm_vmware) }
-      let(:service_c1) { FactoryGirl.create(:service, :service => service) }
-      let(:service_c2) { FactoryGirl.create(:service, :service => service_c1) }
+      let(:service_c1) { FactoryBot.create(:service) }
 
       before do
-        allow(MiqServer).to receive(:my_server).and_return(zone.miq_servers.first)
-        service_c1 << vm
-        service_c2 << vm1
-        service.save
-        service_c1.save
-        service_c2.save
+        service.add_resource!(service_c1)
+        service.add_resource!(FactoryBot.create(:service_template))
+        @miq_request = FactoryBot.create(:service_retire_request, :requester => user)
+        @miq_request.approve(approver, reason)
+        @service_retire_task = FactoryBot.create(:service_retire_task, :source => service, :miq_request => @miq_request, :options => {:src_ids => [service.id] })
       end
 
-      it "creates subtask" do
-        @miq_request = FactoryGirl.create(:service_retire_request, :requester => user)
-        @miq_request.approve(approver, reason)
-        @service_retire_task = FactoryGirl.create(:service_retire_task, :source => service, :miq_request_task_id => nil, :miq_request_id => @miq_request.id, :options => {:src_ids => [service.id] })
-        service.service_resources << FactoryGirl.create(:service_resource, :resource_type => "VmOrTemplate", :service_id => service_c1.id, :resource_id => vm.id)
-        service.service_resources << FactoryGirl.create(:service_resource, :resource_type => "VmOrTemplate", :service_id => service_c1.id, :resource_id => vm1.id)
-        service.service_resources << FactoryGirl.create(:service_resource, :resource_type => "Service", :service_id => service_c1.id, :resource_id => service_c1.id)
-
+      it "creates subtask for services but not templates" do
         @service_retire_task.after_request_task_create
-        expect(VmRetireTask.count).to eq(4)
-        expect(VmRetireTask.all.pluck(:message)).to eq(["Automation Starting", "Automation Starting", "Automation Starting", "Automation Starting"])
-        expect(ServiceRetireTask.count).to eq(1)
+
+        expect(ServiceRetireTask.count).to eq(2)
         expect(ServiceRetireRequest.count).to eq(1)
+      end
+
+      it "doesn't creates subtask for ServiceTemplates" do
+        @service_retire_task.after_request_task_create
+
+        expect(ServiceRetireTask.count).to eq(2)
       end
     end
   end
 
   describe "deliver_to_automate" do
     before do
+      MiqRegion.seed
       allow(MiqServer).to receive(:my_zone).and_return(Zone.seed.name)
       miq_request.approve(approver, reason)
     end
 
     it "updates the task state to pending" do
-      allow(MiqQueue).to receive(:put)
       expect(service_retire_task).to receive(:update_and_notify_parent).with(
         :state   => 'pending',
         :status  => 'Ok',

@@ -2,11 +2,11 @@ describe MiqReportResult do
   before do
     EvmSpecHelper.local_miq_server
 
-    @user1 = FactoryGirl.create(:user_with_group)
+    @user1 = FactoryBot.create(:user_with_group)
   end
 
   it "#_async_generate_result" do
-    task = FactoryGirl.create(:miq_task)
+    task = FactoryBot.create(:miq_task)
     EvmSpecHelper.local_miq_server
     report = MiqReport.create(
         :name          => "VMs based on Disk Type",
@@ -27,18 +27,37 @@ describe MiqReportResult do
     expect(task.state).to eq MiqTask::STATE_FINISHED
   end
 
+  describe "#friendly_title" do
+    let(:report_title) { "VMs using thin provisioned disks" }
+    let(:report) { FactoryBot.create(:miq_report, :title => report_title) }
+    let(:report_result_for_report) { FactoryBot.create(:miq_report_result, :miq_report_id => report.id, :report => report) }
+    let(:widget_title) { "Widget: VMs using thin provisioned disks" }
+    let(:widget) { FactoryBot.create(:miq_widget, :widget => widget_title) }
+    let(:widget_content) { FactoryBot.create(:miq_widget_content, :miq_widget => widget) }
+    let(:report_for_widget) { FactoryBot.create(:miq_report, :title => widget_title) }
+    let(:report_result_for_widget) { FactoryBot.create(:miq_report_result, :miq_report => report_for_widget, :report => report_for_widget, :report_source => MiqWidget::WIDGET_REPORT_SOURCE) }
+
+    it "display title for widget" do
+      expect(report_result_for_report.friendly_title).to eq(report_title)
+    end
+
+    it "display title for widget" do
+      expect(report_result_for_widget.friendly_title).to eq(widget_title)
+    end
+  end
+
   context "report result created by User 1 with current group 1" do
     before do
-      @report_1 = FactoryGirl.create(:miq_report)
-      group_1 = FactoryGirl.create(:miq_group)
-      group_2 = FactoryGirl.create(:miq_group)
+      @report_1 = FactoryBot.create(:miq_report)
+      group_1 = FactoryBot.create(:miq_group)
+      group_2 = FactoryBot.create(:miq_group)
       @user1.miq_groups << group_1
-      @report_result1 = FactoryGirl.create(:miq_report_result, :miq_report_id => @report_1.id, :miq_group => group_1)
-      @report_result2 = FactoryGirl.create(:miq_report_result, :miq_report_id => @report_1.id, :miq_group => group_1)
-      @report_result_nil_report_id = FactoryGirl.create(:miq_report_result)
+      @report_result1 = FactoryBot.create(:miq_report_result, :miq_report_id => @report_1.id, :miq_group => group_1)
+      @report_result2 = FactoryBot.create(:miq_report_result, :miq_report_id => @report_1.id, :miq_group => group_1)
+      @report_result_nil_report_id = FactoryBot.create(:miq_report_result)
 
-      @report_2 = FactoryGirl.create(:miq_report)
-      @report_result3 = FactoryGirl.create(:miq_report_result, :miq_report_id => @report_2.id, :miq_group => group_2)
+      @report_2 = FactoryBot.create(:miq_report)
+      @report_result3 = FactoryBot.create(:miq_report_result, :miq_report_id => @report_2.id, :miq_group => group_2)
       User.current_user = @user1
     end
 
@@ -64,7 +83,7 @@ describe MiqReportResult do
       end
 
       it "returns report all results, admin user logged" do
-        admin_role = FactoryGirl.create(:miq_user_role, :role => "administrator", :read_only => false)
+        admin_role = FactoryBot.create(:miq_user_role, :features => MiqProductFeature::REPORT_ADMIN_FEATURE, :read_only => false)
         User.current_user.current_group.miq_user_role = admin_role
         report_result = MiqReportResult.with_current_user_groups
         expected_reports = [@report_result1, @report_result2, @report_result3, @report_result_nil_report_id]
@@ -76,7 +95,7 @@ describe MiqReportResult do
   context "persisting generated report results" do
     before do
       5.times do |i|
-        vm = FactoryGirl.build(:vm_vmware)
+        vm = FactoryBot.build(:vm_vmware)
         vm.evm_owner_id = @user1.id               if i > 2
         vm.miq_group_id = @user1.current_group.id if vm.evm_owner_id || (i > 1)
         vm.save
@@ -126,7 +145,7 @@ describe MiqReportResult do
       before do
         MiqUserRole.seed
         role = MiqUserRole.find_by(:name => "EvmRole-operator")
-        @miq_group = FactoryGirl.create(:miq_group, :miq_user_role => role, :description => "Group1")
+        @miq_group = FactoryBot.create(:miq_group, :miq_user_role => role, :description => "Group1")
         MiqReport.seed_report(@name_of_report = "Vendor and Guest OS")
       end
 
@@ -144,7 +163,7 @@ describe MiqReportResult do
 
   describe "#status" do
     let(:report_name) { "Vendor and Guest OS" }
-    let(:task) { FactoryGirl.create(:miq_task) }
+    let(:task) { FactoryBot.create(:miq_task) }
     let(:miq_report_result) do
       MiqReport.seed_report(report_name)
       report = MiqReport.where(:name => report_name).last
@@ -173,7 +192,7 @@ describe MiqReportResult do
 
   describe "serializing and deserializing report results" do
     it "can serialize and deserialize an MiqReport" do
-      report = FactoryGirl.build(:miq_report)
+      report = FactoryBot.build(:miq_report)
       report_result = described_class.new
 
       report_result.report_results = report
@@ -211,11 +230,11 @@ EOF
 
   describe ".counts_by_userid" do
     it "fetches counts" do
-      u1 = FactoryGirl.create(:user)
-      u2 = FactoryGirl.create(:user)
-      FactoryGirl.create(:miq_report_result, :userid => u1.userid)
-      FactoryGirl.create(:miq_report_result, :userid => u1.userid)
-      FactoryGirl.create(:miq_report_result, :userid => u2.userid)
+      u1 = FactoryBot.create(:user)
+      u2 = FactoryBot.create(:user)
+      FactoryBot.create(:miq_report_result, :userid => u1.userid)
+      FactoryBot.create(:miq_report_result, :userid => u1.userid)
+      FactoryBot.create(:miq_report_result, :userid => u2.userid)
 
       expect(MiqReportResult.counts_by_userid).to match_array([
         {:userid => u1.userid, :count => 2},

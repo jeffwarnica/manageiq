@@ -84,12 +84,16 @@ module Vmdb
 
     # Disable ActionCable's request forgery protection
     # This is basically matching a set of allowed origins which is not good for us
-    # Our own origin-host forgery protection is implemented in lib/websocket_server.rb
-    Rails.application.config.action_cable.disable_request_forgery_protection = true
+    config.action_cable.disable_request_forgery_protection = false
+    # Matching the origin against the HOST header is much more convenient
+    config.action_cable.allow_same_origin_as_host = true
+    config.action_cable.mount_path = '/ws/notifications'
 
     # Customize any additional options below...
 
     config.autoload_paths += config.eager_load_paths
+
+    config.active_support.halt_callback_chains_on_return_false = false
 
     # NOTE:  If you are going to make changes to autoload_paths, please make
     # sure they are all strings.  Rails will push these paths into the
@@ -109,6 +113,13 @@ module Vmdb
 
     config.autoload_once_paths << Rails.root.join("lib", "vmdb", "console_methods.rb").to_s
 
+    require_relative '../lib/request_started_on_middleware'
+    config.middleware.use RequestStartedOnMiddleware
+
+    # enable to log session id for every request
+    # require_relative '../lib/request_log_session_middleware'
+    # config.middleware.use RequestLogSessionMiddleware
+
     # config.eager_load_paths accepts an array of paths from which Rails will eager load on boot if cache classes is enabled.
     # Defaults to every folder in the app directory of the application.
 
@@ -127,8 +138,8 @@ module Vmdb
       require_relative 'environments/patches/database_configuration'
 
       # To evaluate settings or database.yml with encrypted passwords
-      require 'miq-password'
-      MiqPassword.key_root = Rails.root.join("certs")
+      require 'manageiq-password'
+      ManageIQ::Password.key_root = Rails.root.join("certs")
 
       require 'vmdb_helper'
     end
@@ -156,6 +167,7 @@ module Vmdb
     config.after_initialize do
       Vmdb::Initializer.init
       ActiveRecord::Base.connection_pool.release_connection
+      puts "** #{Vmdb::Appliance.BANNER}" unless Rails.env.production?
     end
 
     console do
@@ -172,6 +184,12 @@ module Vmdb
       # since the railtie for it is loaded first and will include
       # `Rails::ConsoleMethods` before we have a chance to modify them here.
       TOPLEVEL_BINDING.eval('self').extend(Vmdb::ConsoleMethods)
+
+      # In test mode automatically load the spec helper which will, among other
+      # things, find the factory definitions and load factory related methods.
+      if Rails.env.test?
+        require_relative '../spec/spec_helper'
+      end
     end
   end
 end

@@ -1,4 +1,25 @@
 describe MetricRollup do
+  describe "metric_rollups view" do
+    it "creates an object with an id" do
+      metric = described_class.create!(:timestamp => Time.now.utc)
+      expect(metric.id).to be > 0
+    end
+
+    it "initializes an object's id after save" do
+      metric = described_class.new
+      metric.timestamp = Time.now.utc
+      metric.save!
+      expect(metric.id).to be > 0
+    end
+
+    it "updates an existing object correctly" do
+      metric = described_class.create!(:timestamp => Time.now.utc, :cpu_usage_rate_average => 50.0)
+      old_id = metric.id
+      metric.update_attributes!(:cpu_usage_rate_average => 75.0)
+      expect(metric.id).to eq(old_id)
+    end
+  end
+
   context "test" do
     it "should not raise an error when a polymorphic reflection is included and references are specified in a query" do
       skip "until ActiveRecord is fixed"
@@ -20,8 +41,8 @@ describe MetricRollup do
 
   context ".rollups_in_range" do
     before do
-      @current = FactoryGirl.create_list(:metric_rollup_vm_hr, 2)
-      @past = FactoryGirl.create_list(:metric_rollup_vm_hr, 2, :timestamp => Time.now.utc - 5.days)
+      @current = FactoryBot.create_list(:metric_rollup_vm_hr, 2)
+      @past = FactoryBot.create_list(:metric_rollup_vm_hr, 2, :timestamp => Time.now.utc - 5.days)
     end
 
     it "returns rollups from the correct range" do

@@ -133,7 +133,7 @@ describe ApplianceEmbeddedAnsible do
     end
 
     before do
-      FactoryGirl.create(:miq_region, :region => ApplicationRecord.my_region_number)
+      FactoryBot.create(:miq_region, :region => ApplicationRecord.my_region_number)
       MiqDatabase.seed
       EvmSpecHelper.create_guid_miq_server_zone
     end
@@ -234,6 +234,24 @@ describe ApplianceEmbeddedAnsible do
         expect(AwesomeSpawn).to receive(:run!).with("ansible-tower-setup", anything)
 
         subject.start
+      end
+    end
+
+    describe "#start with the force setup run marker file" do
+      it "runs the setup playbook" do
+        file = Rails.root.join("tmp", "embedded_ansible_force_setup_run")
+        FileUtils.touch(file)
+
+        expect(subject).to receive(:configure_secret_key)
+        expect(subject).to receive(:alive?).and_return(true)
+        miq_database.set_ansible_admin_authentication(:password => "adminpassword")
+        miq_database.set_ansible_rabbitmq_authentication(:userid => "rabbituser", :password => "rabbitpassword")
+        miq_database.set_ansible_database_authentication(:userid => "databaseuser", :password => "databasepassword")
+
+        expect(AwesomeSpawn).to receive(:run!).with("ansible-tower-setup", anything)
+
+        subject.start
+        FileUtils.rm_f(file)
       end
     end
 

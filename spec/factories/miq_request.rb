@@ -1,9 +1,9 @@
-FactoryGirl.define do
+FactoryBot.define do
   factory :miq_request do
     requester { create(:user) }
 
     factory :automation_request, :class => "AutomationRequest" do
-      request_type "automation"
+      request_type { "automation" }
     end
 
     factory :service_reconfigure_request,        :class => "ServiceReconfigureRequest"
@@ -22,11 +22,11 @@ FactoryGirl.define do
 
     trait :with_approval do
       transient do
-        reason ""
+        reason { "" }
       end
 
       after(:create) do |request, evaluator|
-        request.miq_approvals << FactoryGirl.create(:miq_approval, :reason => evaluator.reason)
+        request.miq_approvals << FactoryBot.create(:miq_approval, :reason => evaluator.reason)
       end
     end
   end

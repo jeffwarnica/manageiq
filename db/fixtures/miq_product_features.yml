@@ -180,10 +180,6 @@
       :description: Edit a Request
       :feature_type: admin
       :identifier: miq_request_edit
-  - :name: Request Admin
-    :description: Edit other user's requests
-    :feature_type: admin
-    :identifier: miq_request_superadmin
 
 # MiqRequest under Automation/Automate tab for Automate Requests
 - :name: Requests
@@ -468,10 +464,6 @@
     :feature_type: control
     :identifier: ems_cloud_control
     :children:
-    - :name: Discover
-      :description: Discover Cloud Providers
-      :feature_type: control
-      :identifier: ems_cloud_discover
     - :name: Edit Tags
       :description: Edit Tags of Cloud Providers
       :feature_type: control
@@ -952,6 +944,35 @@
       :feature_type: control
       :identifier: cloud_volume_backup_delete
 
+# CloudVolumeType
+- :name: Cloud Volume Types
+  :description: Everything under Cloud Volume Types
+  :feature_type: node
+  :identifier: cloud_volume_type
+  :children:
+  - :name: View
+    :description: View Volume Types
+    :feature_type: view
+    :identifier: cloud_volume_type_view
+    :children:
+    - :name: List
+      :description: Display Lists of Volume Types
+      :feature_type: view
+      :identifier: cloud_volume_type_show_list
+    - :name: Show
+      :description: Display Individual Volume Types
+      :feature_type: view
+      :identifier: cloud_volume_type_show
+  - :name: Operate
+    :description: Perform Operations on Volume Types
+    :feature_type: control
+    :identifier: cloud_volume_type_control
+    :children:
+    - :name: Edit Tags
+      :description: Edit Tags of Volume Types
+      :feature_type: control
+      :identifier: cloud_volume_type_tag
+
 # Flavor
 - :name: Flavors
   :description: Everything under Flavors
@@ -1087,11 +1108,51 @@
       :feature_type: admin
       :identifier: ems_infra_change_password
 
-# Migration
-- :name: Migration
-  :description: Everything under Migration
+# V2V
+- :name: Migration Overview
+  :description: Migration Overview
   :feature_type: node
   :identifier: migration
+  :children:
+  - :name: Conversion Hosts
+    :description: Conversion Hosts
+    :feature_type: node
+    :identifier: conversion_host
+    :children:
+    - :name: View
+      :description: View Conversion Hosts
+      :feature_type: view
+      :identifier: conversion_host_view
+      :children:
+      - :name: List
+        :description: Display Lists of Conversion Hosts
+        :feature_type: view
+        :identifier: conversion_host_show_list
+      - :name: Show
+        :description: Display Individual Conversion Hosts
+        :feature_type: view
+        :identifier: conversion_host_show
+    - :name: Operate
+      :description: Perform Operations on Conversion Hosts
+      :feature_type: control
+      :identifier: conversion_host_control
+      :children:
+      - :name: Edit Tags
+        :description: Edit Tags of Conversion Hosts
+        :feature_type: control
+        :identifier: conversion_host_tag
+
+# V2V
+- :name: Infrastructure Mappings
+  :description: Infrastructure Mappings
+  :feature_type: node
+  :identifier: mappings
+
+# V2V
+- :name: Migration Settings
+  :description: Migration Settings
+  :feature_type: node
+  :identifier: migration_settings
 
 # Datacenters
 - :name: Datacenters
@@ -1315,7 +1376,6 @@
       :description: Provide Hosts / Nodes
       :feature_type: admin
       :identifier: host_provide
-
 
 # Resource Pools
 - :name: Resource Pools
@@ -2416,34 +2476,34 @@
   - :name: Dialogs
     :description: Dialogs Accordion
     :feature_type: node
-    :hidden: true
+    :hidden: false
     :identifier: dialog_accord
     :children:
     - :name: Modify
       :description: Modify Dialogs
       :feature_type: admin
       :identifier: dialog_admin
-      :hidden: true
+      :hidden: false
       :children:
       - :name: Add
         :description: Add Dialog in the Dialog Editor
         :feature_type: admin
-        :hidden: true
+        :hidden: false
         :identifier: dialog_new_editor
       - :name: Edit
         :description: Edit Dialog in the Dialog Editor
         :feature_type: admin
-        :hidden: true
+        :hidden: false
         :identifier: dialog_edit_editor
       - :name: Copy
         :description: Copy Dialog
         :feature_type: admin
-        :hidden: true
+        :hidden: false
         :identifier: dialog_copy_editor
       - :name: Delete
         :description: Delete Dialog
         :feature_type: admin
-        :hidden: true
+        :hidden: false
         :identifier: dialog_delete
   - :name: Provisioning Dialogs
     :description: Provisioning Dialogs Accordion
@@ -2676,6 +2736,7 @@
   :description: Display of Utilization Data
   :feature_type: node
   :identifier: utilization
+
 # Planning
 - :name: Planning
   :description: Display of Planning Data
@@ -2742,7 +2803,6 @@
           :feature_type: admin
           :hidden: true
           :identifier: tp_delete
-
 
 # Tasks
 - :name: Tasks
@@ -3366,11 +3426,13 @@
   :description: Open the Documentation Page
   :feature_type: node
   :identifier: documentation
+
 # Product
 - :name: Product
   :description: Open the Product Website
   :feature_type: node
   :identifier: product
+
 # About
 - :name: About
   :description: Show the About Information
@@ -3625,7 +3687,6 @@
     :hidden: true
     :identifier: miq_capacity_download_text
 
-
 # OrchestrationStack
 - :name: Orchestration Stacks
   :description: Everything under Orchestration Stacks
@@ -3744,30 +3805,6 @@
       :description: Open External Logging from Container Provider
       :feature_type: control
       :identifier: ems_container_launch_external_logging
-    - :name: Container Deployments
-      :description: Container Deployments
-      :feature_type: node
-      :identifier: container_deployment
-      :hidden: true
-      :children:
-      - :name: View
-        :description: View Container Deployments
-        :feature_type: view
-        :identifier: container_deployment_view
-        :children:
-        - :name: Container Deployment Show
-          :description: Container Deployment Show
-          :feature_type: view
-          :identifier: container_deployment_show
-      - :name: Operate
-        :description: Perform Operations on Container Deployment
-        :feature_type: control
-        :identifier: container_deployment_control
-        :children:
-        - :name: Container Deployment Create
-          :description: Container Deployment Create
-          :feature_type: control
-          :identifier: container_deployment_create
   - :name: Modify
     :description: Modify Containers Providers
     :feature_type: admin
@@ -3785,10 +3822,6 @@
       :description: Add a Containers Provider
       :feature_type: admin
       :identifier: ems_container_new
-    - :name: deploy
-      :description: Deploy a New Containers Provider
-      :feature_type: admin
-      :identifier: ems_container_deployment
 
 # EmsNetwork
 - :name: Network Providers
@@ -3990,7 +4023,6 @@
       :feature_type: admin
       :identifier: cloud_network_delete
 
-
 # Network Port
 - :name: Network Ports
   :description: Everything under Network Ports
@@ -4130,7 +4162,6 @@
       :description: Remove Interface from Router
       :feature_type: admin
       :identifier: network_router_remove_interface
-
 
 # Load Balancer
 - :name: Load Balancers
@@ -4295,7 +4326,6 @@
       :description: Check Compliance of Last Known Configuration
       :feature_type: control
       :identifier: container_replicator_check_compliance
-
 
 # ContainerImage
 - :name: Images
@@ -4671,6 +4701,17 @@
     :feature_type: view
     :identifier: ems_infra_dashboard_view
 
+# Physical Infra Provider Overview
+- :name: Physical Infra Providers Overview
+  :description: Physical Infra Providers Overview
+  :feature_type: node
+  :identifier: physical_infra_overview
+  :children:
+  - :name: View
+    :description: View Physical Infra Providers Overview
+    :feature_type: view
+    :identifier: physical_infra_overview_view
+
 # Foreman
 - :name: Configuration Management
   :description: Everything under Configuration Management
@@ -4716,6 +4757,14 @@
         :description: Edit a Provider
         :feature_type: admin
         :identifier: provider_foreman_edit_provider
+      - :name: Pause
+        :description: Pause a Provider
+        :feature_type: admin
+        :identifier: provider_foreman_pause
+      - :name: Resume
+        :description: Resume a Provider
+        :feature_type: admin
+        :identifier: provider_foreman_resume
       - :name: Add Provider
         :description: Add a Provider
         :feature_type: admin
@@ -4912,6 +4961,14 @@
         :description: Edit a Provider
         :feature_type: admin
         :identifier: automation_manager_edit_provider
+      - :name: Pause
+        :description: Pause a Provider
+        :feature_type: admin
+        :identifier: automation_manager_pause
+      - :name: Resume
+        :description: Resume a Provider
+        :feature_type: admin
+        :identifier: automation_manager_resume
       - :name: Add Provider
         :description: Add a Provider
         :feature_type: admin
@@ -6148,6 +6205,7 @@
       :description: Access Physical Server Remote Console
       :feature_type: control
       :identifier: physical_server_remote_console
+
 # Firmwares
 - :name: Firmwares
   :description: Everything under Firmware
@@ -6294,6 +6352,10 @@
     :description: Apply Config Pattern
     :feature_type: control
     :identifier: physical_server_apply_config_pattern
+  - :name: Execute Ansible Playbook
+    :description: Execute Ansible Playbook
+    :feature_type: control
+    :identifier: physical_infra_ansible
   - :name: Event Streams
     :description: Everything under Event Streams
     :feature_type: node
@@ -6312,6 +6374,36 @@
         :description: Display Individual Event Streams
         :feature_type: view
         :identifier: event_streams_show
+  - :name: Custom Button Events
+    :description: Everything under Custom Button Events
+    :hidden: true
+    :feature_type: node
+    :identifier: custom_button_events
+    :children:
+    - :name: List
+      :description: Display List of Custom Button Events
+      :hidden: true
+      :feature_type: view
+      :identifier: custom_button_events_show_list
+  - :name: Service Offerings
+    :description: Everything under Service Offerings
+    :feature_type: node
+    :identifier: service_offerings
+    :children:
+    - :name: View
+      :description: View Service Offerings
+      :feature_type: view
+      :identifier: service_offerings_view
+  - :name: Service Parameters Sets
+    :description: Everything under Service Parameters Sets
+    :feature_type: node
+    :identifier: service_parameters_sets
+    :children:
+    - :name: View
+      :description: View Service Parameters Sets
+      :feature_type: view
+      :identifier: service_parameters_sets_view
+
 # SUI
 - :name: Service UI
   :description: Features for the Service UI
@@ -6335,6 +6427,14 @@
       :description: Display notifications
       :feature_type: view
       :identifier: sui_notifications
+    - :name: Metrics
+      :description: Display metrics
+      :feature_type: view
+      :identifier: sui_metrics
+    - :name: Tags
+      :description: Display tags
+      :feature_type: view
+      :identifier: sui_tags
   - :name: Dashboard
     :description: Dashboard features
     :feature_type: node

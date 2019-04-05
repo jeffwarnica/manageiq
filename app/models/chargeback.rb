@@ -1,15 +1,33 @@
 class Chargeback < ActsAsArModel
   set_columns_hash( # Fields common to any chargeback type
-    :start_date           => :datetime,
-    :end_date             => :datetime,
-    :interval_name        => :string,
-    :display_range        => :string,
-    :chargeback_rates     => :string,
-    :entity               => :binary,
-    :tag_name             => :string,
-    :label_name           => :string,
-    :fixed_compute_metric => :integer,
+    :start_date             => :datetime,
+    :end_date               => :datetime,
+    :interval_name          => :string,
+    :display_range          => :string,
+    :report_interval_range  => :string,
+    :report_generation_date => :datetime,
+    :chargeback_rates       => :string,
+    :entity                 => :binary,
+    :tag_name               => :string,
+    :label_name             => :string,
+    :fixed_compute_metric   => :integer,
   )
+
+  ALLOWED_FIELD_SUFFIXES = %w[
+    _rate
+    _cost
+    -owner_name
+    _metric
+    -report_interval_range
+    -report_generation_date
+    -provider_name
+    -provider_uid
+    -project_uid
+    -archived
+    -chargeback_rates
+    -vm_guid
+    -vm_uid
+  ].freeze
 
   def self.dynamic_rate_columns
     @chargeable_fields = {}
@@ -31,13 +49,18 @@ class Chargeback < ActsAsArModel
     @options = options = ReportOptions.new_from_h(options)
 
     data = {}
-    rates = RatesCache.new
+    rates = RatesCache.new(options)
+    _log.debug("With report options: #{options.inspect}")
 
     MiqRegion.all.each do |region|
+      _log.debug("For region #{region.region}")
+
       ConsumptionHistory.for_report(self, options, region.region) do |consumption|
         rates_to_apply = rates.get(consumption)
 
         key = report_row_key(consumption)
+        _log.debug("Report row key #{key}")
+
         data[key] ||= new(options, consumption, region.region)
 
         chargeback_rates = data[key]["chargeback_rates"].split(', ') + rates_to_apply.collect(&:description)
@@ -68,6 +91,8 @@ class Chargeback < ActsAsArModel
     elsif @options.group_by_tenant?
       tenant = @options.tenant_for(consumption)
       "#{tenant ? tenant.id : 'none'}_#{ts_key}"
+    elsif @options.group_by_date_only?
+      ts_key
     else
       default_key(consumption, ts_key)
     end
@@ -151,14 +176,36 @@ class Chargeback < ActsAsArModel
     end
   end
 
-  def calculate_costs(consumption, rates)
-    self.fixed_compute_metric = consumption.chargeback_fields_present if consumption.chargeback_fields_present
-    self.class.try(:refresh_dynamic_metric_columns)
+  def calculate_fixed_compute_metric(consumption)
+    return unless consumption.chargeback_fields_present
 
+    if @options.group_by_date_only?
+      self.fixed_compute_metric ||= 0
+      self.fixed_compute_metric += consumption.chargeback_fields_present
+    else
+      self.fixed_compute_metric = consumption.chargeback_fields_present
+    end
+  end
+
+  def calculate_costs(consumption, rates)
+    calculate_fixed_compute_metric(consumption)
+    self.class.try(:refresh_dynamic_metric_columns)
+    self.report_interval_range = "#{consumption.report_interval_start.strftime('%m/%d/%Y')} - #{consumption.report_interval_end.strftime('%m/%d/%Y')}"
+    self.report_generation_date = Time.current
+
+    _log.debug("Consumption Type: #{consumption.class}")
     rates.each do |rate|
+      _log.debug("Calculation with rate: #{rate.id} #{rate.description}(#{rate.rate_type})")
       rate.rate_details_relevant_to(relevant_fields, self.class.attribute_names).each do |r|
+        _log.debug("Metric: #{r.chargeable_field.metric} Group: #{r.chargeable_field.group} Source: #{r.chargeable_field.source}")
+        r.chargeback_tiers.each do |tier|
+          _log.debug("Start: #{tier.start} Finish: #{tier.finish} Fixed Rate: #{tier.fixed_rate} Variable Rate: #{tier.variable_rate}")
+        end
         r.charge(consumption, @options).each do |field, value|
-          self[field] = self[field].kind_of?(Numeric) ? (self[field] || 0) + value : value
+          next if @options.skip_field_accumulation?(field, self[field])
+          _log.debug("Calculation with field: #{field} and with value: #{value}")
+          (self[field] = self[field].kind_of?(Numeric) ? (self[field] || 0) + value : value)
+          _log.debug("Accumulated value: #{self[field]}")
         end
       end
     end
@@ -183,7 +230,9 @@ class Chargeback < ActsAsArModel
   def self.set_chargeback_report_options(rpt, group_by, header_for_tag, groupby_label, tz)
     rpt.cols = %w(start_date display_range)
 
-    static_cols       = group_by == "project" ? report_static_cols - ["image_name"] : report_static_cols
+    static_cols       = report_static_cols
+    static_cols      -= ["image_name"] if group_by == "project"
+    static_cols      -= ["vm_name"] if group_by == "date-only"
     static_cols       = group_by == "tag" ? [report_tag_field] : static_cols
     static_cols       = group_by == "label" ? [report_label_field] : static_cols
     static_cols       = group_by == "tenant" ? ['tenant_name'] : static_cols
@@ -238,6 +287,10 @@ class Chargeback < ActsAsArModel
     else
       col
     end
+  end
+
+  def self.rate_column?(col)
+    col.ends_with?("_rate")
   end
 
   private

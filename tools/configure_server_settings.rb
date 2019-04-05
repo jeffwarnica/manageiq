@@ -1,10 +1,10 @@
 #!/usr/bin/env ruby
 require 'bundler/setup'
-require 'trollop'
+require 'optimist'
 
 TYPES = %w(string integer boolean symbol float array).freeze
 
-opts = Trollop.options(ARGV) do
+opts = Optimist.options(ARGV) do
   banner "USAGE:   #{__FILE__} -s <server id> -p <settings path separated by a /> -v <new value>\n" \
          "Example (String):  #{__FILE__} -s 1 -p reporting/history/keep_reports -v 3.months\n" \
          "Example (Integer): #{__FILE__} -s 1 -p workers/worker_base/queue_worker_base/ems_metrics_collector_worker/defaults/count -v 1 -t integer\n" \
@@ -23,10 +23,10 @@ end
 
 puts opts.inspect
 
-Trollop.die :serverid, "is required" unless opts[:serverid_given]
-Trollop.die :path,     "is required" unless opts[:path_given]
-Trollop.die :value,    "is required" unless opts[:value_given]
-Trollop.die :type,     "must be one of #{TYPES.inspect}" unless TYPES.include?(opts[:type])
+Optimist.die :serverid, "is required" unless opts[:serverid_given]
+Optimist.die :path,     "is required" unless opts[:path_given]
+Optimist.die :value,    "is required" unless opts[:value_given]
+Optimist.die :type,     "must be one of #{TYPES.inspect}" unless TYPES.include?(opts[:type])
 
 # Grab the value that we have set and translate to appropriate var class
 newval =
@@ -51,15 +51,28 @@ newval =
 
 # load rails after checking CLI args so we can report args errors as fast as possible
 require File.expand_path("../config/environment", __dir__)
+
+def boolean?(value)
+  value.kind_of?(TrueClass) || value.kind_of?(FalseClass)
+end
+
+def types_valid?(old_val, new_val)
+  if boolean?(old_val)
+    boolean?(new_val)
+  else
+    new_val.kind_of?(old_val.class)
+  end
+end
+
 server = MiqServer.where(:id => opts[:serverid]).take
 unless server
   puts "Unable to find server with id [#{opts[:serverid]}]"
   exit 1
 end
 
-settings = server.get_config("vmdb")
+settings = server.settings
 
-path = settings.config
+path = settings
 keys = opts[:path].split("/")
 key = keys.pop.to_sym
 keys.each { |p| path = path[p.to_sym] }
@@ -68,7 +81,7 @@ keys.each { |p| path = path[p.to_sym] }
 # such as setting a String where it was previously an Integer
 if opts[:force]
   puts "Change [#{opts[:path]}], old class: [#{path[key].class}], new class: [#{newval.class}]"
-elsif path[key] && path[key].class != newval.class
+elsif path[key] && !types_valid?(path[key], newval)
   STDERR.puts "The new value's class #{newval.class} does not match the prior one's #{path[key].class}. Use -t to specify the type for the provided value. Use -f to force changing this value. Note, -f may break things! See -h for examples."
   exit 1
 end
@@ -76,7 +89,7 @@ end
 puts "Setting [#{opts[:path]}], old value: [#{path[key]}], new value: [#{newval}]"
 path[key] = newval
 
-valid, errors = VMDB::Config::Validator.new(settings).validate
+valid, errors = Vmdb::Settings.validate(settings)
 unless valid
   puts "ERROR: Configuration is invalid:"
   errors.each { |k, v| puts "\t#{k}: #{v}" }
@@ -86,7 +99,7 @@ end
 if opts[:dry_run]
   puts "Dry run, no updates have been made"
 else
-  server.set_config(settings)
+  server.add_settings_for_resource(settings)
   server.save!
 
   puts "Done"

@@ -15,12 +15,17 @@ class ApplicationRecord < ActiveRecord::Base
   extend ArTableLock
 
   # FIXME: UI code - decorator support
-  if defined?(ManageIQ::UI::Classic::Engine)
+  if defined?(ManageIQ::Decorators::Engine)
     extend MiqDecorator::Klass
     include MiqDecorator::Instance
   end
 
   def self.display_name(number = 1)
     n_(model_name.singular.titleize, model_name.plural.titleize, number)
+  end
+
+  def self.human_attribute_name(attribute, options = {})
+    return super if options.delete(:ui) == true
+    "#{name}: #{super}"
   end
 end

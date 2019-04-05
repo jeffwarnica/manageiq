@@ -5,6 +5,7 @@ class EmsCluster < ApplicationRecord
   include EventMixin
   include TenantIdentityMixin
   include CustomActionsMixin
+  include ClusterUpgrade
 
   acts_as_miq_taggable
 
@@ -26,7 +27,6 @@ class EmsCluster < ApplicationRecord
   virtual_column :v_cpu_vr_ratio,      :type => :float,   :uses => [:aggregate_cpu_total_cores, :aggregate_vm_cpus]
   virtual_column :v_parent_datacenter, :type => :string,  :uses => :all_relationships
   virtual_column :v_qualified_desc,    :type => :string,  :uses => :all_relationships
-  virtual_column :last_scan_on,        :type => :time,    :uses => :last_drift_state_timestamp
   virtual_total  :total_vms,               :vms
   virtual_total  :total_miq_templates,     :miq_templates
   virtual_total  :total_vms_and_templates, :vms_and_templates
@@ -44,7 +44,7 @@ class EmsCluster < ApplicationRecord
   include FilterableMixin
 
   include DriftStateMixin
-  alias_method :last_scan_on, :last_drift_state_timestamp
+  virtual_delegate :last_scan_on, :to => "last_drift_state_timestamp_rec.timestamp", :allow_nil => true
 
   include RelationshipMixin
   self.default_relationship_type = "ems_metadata"
@@ -110,7 +110,7 @@ class EmsCluster < ApplicationRecord
   # Direct Vm relationship methods
   def direct_vm_rels
     # Look for only the Vms at the second depth (default RP + 1)
-    descendant_rels(:of_type => 'VmOrTemplate').select { |r| (r.depth - depth) == 2 }
+    grandchild_rels(:of_type => 'VmOrTemplate')
   end
 
   def direct_vms
@@ -134,7 +134,7 @@ class EmsCluster < ApplicationRecord
   end
 
   virtual_total :total_direct_vms, :direct_vm_rels
-  virtual_total :total_direct_miq_templates, :direct_miq_templates
+  virtual_total :total_direct_miq_templates, :miq_templates
 
   def total_direct_vms_and_templates
     total_direct_vms + total_direct_miq_templates

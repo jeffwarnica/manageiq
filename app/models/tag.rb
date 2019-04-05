@@ -122,15 +122,8 @@ class Tag < ApplicationRecord
     where(:name => fq_tag_names)
   end
 
-  def self.find_by_classification_name(name, region_id = Classification.my_region_number,
-                                       ns = Classification::DEFAULT_NAMESPACE, parent_id = 0)
-    in_region(region_id).find_by(:name => Classification.name2tag(name, parent_id, ns))
-  end
-
-  def self.find_or_create_by_classification_name(name, region_id = Classification.my_region_number,
-                                                 ns = Classification::DEFAULT_NAMESPACE, parent_id = 0)
-    tag_name = Classification.name2tag(name, parent_id, ns)
-    in_region(region_id).find_by(:name => tag_name) || create(:name => tag_name)
+  def self.find_by_classification_name(name)
+    in_region(my_region_number).find_by(:name => Classification.name2tag(name))
   end
 
   def ==(comparison_object)
@@ -147,10 +140,10 @@ class Tag < ApplicationRecord
         {}
       else
         {
-          "name"         => classification.name,
-          "description"  => classification.description,
-          "category"     => {"name" => category.name, "description" => category.description},
-          "display_name" => "#{category.description}: #{classification.description}"
+          "name"         => classification.try(:name),
+          "description"  => classification.try(:description),
+          "category"     => {"name" => category.try(:name), "description" => category.try(:description)},
+          "display_name" => "#{category.try(:description)}: #{classification.try(:description)}"
         }
       end
   end

@@ -53,7 +53,7 @@ class Service < ApplicationRecord
   virtual_has_one    :reconfigure_dialog
 
   before_validation :set_tenant_from_group
-  before_create     :apply_dialog_settings
+  before_create :update_attributes_from_dialog
 
   delegate :provision_dialog, :to => :miq_request, :allow_nil => true
   delegate :user, :to => :miq_request, :allow_nil => true
@@ -66,8 +66,12 @@ class Service < ApplicationRecord
   include ProcessTasksMixin
   include TenancyMixin
   include SupportsFeatureMixin
+  include CiFeatureMixin
   include Metric::CiMixin
 
+  extend InterRegionApiMethodRelay
+
+  include_concern 'Operations'
   include_concern 'RetirementManagement'
   include_concern 'Aggregation'
   include_concern 'ResourceLinking'
@@ -148,6 +152,10 @@ class Service < ApplicationRecord
     'service_reconfigure'
   end
 
+  def retireable?
+    parent.present? ? true : type.present?
+  end
+
   alias root_service root
   alias services children
   alias direct_service_children children
@@ -205,17 +213,21 @@ class Service < ApplicationRecord
   end
 
   def all_states_match?(action)
-    return true if composite? && (power_states.uniq == map_power_states(action))
-    return true if atomic? && (power_states[0] == POWER_STATE_MAP[action])
-    false
+    if composite?
+      power_states.uniq == map_power_states(action)
+    else
+      power_states[0] == POWER_STATE_MAP[action]
+    end
   end
 
+  # @return true if this is a composite service
   def composite?
     children.present?
   end
 
+  # @return true if this is a single service (not made up of multiple services)
   def atomic?
-    children.empty?
+    !composite?
   end
 
   def orchestration_stacks
@@ -254,7 +266,9 @@ class Service < ApplicationRecord
   end
 
   def update_power_status(action)
-    options[:power_status] = "#{action}_complete"
+    expected_status = "#{action}_complete"
+    return true if options[:power_status] == expected_status
+    options[:power_status] = expected_status
     update_attributes(:options => options)
   end
 
@@ -408,22 +422,32 @@ class Service < ApplicationRecord
   end
 
   def queue_chargeback_report_generation(options = {})
+    msg = "Generating chargeback report for `#{self.class.name}` with id #{id}"
     task = MiqTask.create(
-      :name    => "Generating chargeback report with id: #{id}",
+      :name    => msg,
       :state   => MiqTask::STATE_QUEUED,
       :status  => MiqTask::STATUS_OK,
-      :message => "Queueing Chargeback of #{self.class.name} with id: #{id}"
+      :message => "Queueing: #{msg}"
     )
+
+    cb = {
+      :class_name  => task.class.to_s,
+      :instance_id => task.id,
+      :method_name => :queue_callback,
+      :args        => ["Finished"]
+    }
 
     MiqQueue.submit_job(
       :service     => "reporting",
       :class_name  => self.class.name,
       :instance_id => id,
       :task_id     => task.id,
+      :miq_task_id  => task.id,
+      :miq_callback => cb,
       :method_name => "generate_chargeback_report",
       :args        => options
     )
-    _log.info("Added to queue: generate_chargeback_report for service #{name}")
+    _log.info("Added to queue: #{msg}")
     task
   end
 
@@ -463,21 +487,7 @@ class Service < ApplicationRecord
   def configuration_script
   end
 
-  private
-
-  def apply_dialog_settings
-    dialog_options = options[:dialog] || {}
-
-    %w(dialog_service_name dialog_service_description).each do |field_name|
-      send(field_name, dialog_options[field_name]) if dialog_options.key?(field_name)
-    end
-  end
-
-  def dialog_service_name(value)
-    self.name = value if value.present?
-  end
-
-  def dialog_service_description(value)
-    self.description = value if value.present?
+  private def update_attributes_from_dialog
+    Service::DialogProperties.parse(options[:dialog], evm_owner).each { |key, value| self[key] = value }
   end
 end

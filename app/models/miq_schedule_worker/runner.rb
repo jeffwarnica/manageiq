@@ -208,6 +208,11 @@ class MiqScheduleWorker::Runner < MiqWorker::Runner
       enqueue(:notification_purge_timer)
     end
 
+    every = worker_settings[:task_purge_interval]
+    scheduler.schedule_every(every, :first_in => every) do
+      enqueue(:task_purge_timer)
+    end
+
     every = worker_settings[:vim_performance_states_purge_interval]
     scheduler.schedule_every(every, :first_in => every) do
       enqueue(:vim_performance_states_purge_timer)
@@ -366,7 +371,7 @@ class MiqScheduleWorker::Runner < MiqWorker::Runner
   def sync_updated_user_schedules
     rufus_remove_stale_schedules
     threshold = @last_checked || Time.at(0)
-    schedules = MiqSchedule.updated_since(threshold)
+    schedules = MiqSchedule.in_my_region.updated_since(threshold)
     @last_checked = Time.now.utc
     reload_schedules(schedules)
   end

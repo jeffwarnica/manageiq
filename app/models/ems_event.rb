@@ -167,6 +167,7 @@ class EmsEvent < EventStream
   end
 
   def manager_refresh_targets
+    require "inventory_refresh"
     ext_management_system.class::EventTargetParser.new(self).parse
   end
 
@@ -194,6 +195,8 @@ class EmsEvent < EventStream
     new_event.handle_event if new_event
     new_event
   end
+
+  private_class_method :create_event
 
   def self.create_completed_event(event, orig_task = nil)
     if orig_task.nil?
@@ -252,6 +255,8 @@ class EmsEvent < EventStream
       create_event(new_event)
     end
   end
+
+  private_class_method :create_completed_event
 
   def get_refresh_target(target_type)
     m = "#{target_type}_refresh_target"

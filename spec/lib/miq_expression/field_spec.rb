@@ -325,6 +325,14 @@ RSpec.describe MiqExpression::Field do
       expect(MiqExpression::Field.parse("Vm-id")).to be_numeric
     end
 
+    it "detects decimal as numeric" do
+      expect(MiqExpression::Field.parse("MiqServer-memory_size")).to be_numeric
+    end
+
+    it "detects float as numeric" do
+      expect(MiqExpression::Field.parse("MiqServer-percent_memory")).to be_numeric
+    end
+
     it "detects string as non-numeric" do
       expect(MiqExpression::Field.parse("Vm-name")).not_to be_numeric
     end
@@ -351,7 +359,11 @@ RSpec.describe MiqExpression::Field do
 
     it "does not detect a string to looks like a field but isn't" do
       expect(MiqExpression::Field.is_field?("NetworkManager-team")).to be_falsey
-      expect(described_class.is_field?("ManageIQ-name")).to be(false)
+      expect(described_class.is_field?("ManageIQ-name")).to be_falsey
+    end
+
+    it "handles regular expression" do
+      expect(MiqExpression::Field.is_field?(/x/)).to be_falsey
     end
   end
 end

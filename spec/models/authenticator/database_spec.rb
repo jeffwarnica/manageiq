@@ -1,7 +1,7 @@
 describe Authenticator::Database do
   subject { Authenticator::Database.new({}) }
-  let!(:alice) { FactoryGirl.create(:user, :userid => 'alice', :password => 'secret') }
-  let!(:vincent) { FactoryGirl.create(:user, :userid => 'Vincent', :password => 'secret') }
+  let!(:alice) { FactoryBot.create(:user, :userid => 'alice', :password => 'secret') }
+  let!(:vincent) { FactoryBot.create(:user, :userid => 'Vincent', :password => 'secret') }
 
   describe '#uses_stored_password?' do
     it "is true" do
@@ -46,6 +46,7 @@ describe Authenticator::Database do
         expect(AuditEvent).not_to receive(:failure)
         authenticate
       end
+
       it "updates lastlogon" do
         expect(-> { authenticate }).to change { alice.reload.lastlogon }
       end
@@ -121,12 +122,12 @@ describe Authenticator::Database do
       it "records two successful audit entries" do
         expect(AuditEvent).to receive(:success).with(
           :event   => 'authenticate_database',
-          :userid  => 'vInCeNt',
+          :userid  => 'vincent',
           :message => "User vincent successfully validated by EVM",
         )
         expect(AuditEvent).to receive(:success).with(
           :event   => 'authenticate_database',
-          :userid  => 'vInCeNt',
+          :userid  => 'vincent',
           :message => "Authentication successful for user vincent",
         )
         expect(AuditEvent).not_to receive(:failure)

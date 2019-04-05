@@ -39,6 +39,8 @@ class MiqServer < ApplicationRecord
   scope :with_zone_id, ->(zone_id) { where(:zone_id => zone_id) }
   virtual_delegate :description, :to => :zone, :prefix => true
 
+  validate :validate_zone_not_maintenance?
+
   STATUS_STARTING       = 'starting'.freeze
   STATUS_STARTED        = 'started'.freeze
   STATUS_RESTARTING     = 'restarting'.freeze
@@ -52,6 +54,10 @@ class MiqServer < ApplicationRecord
   STATUSES_ALIVE   = STATUSES_ACTIVE + [STATUS_RESTARTING, STATUS_QUIESCE]
 
   RESTART_EXIT_STATUS = 123
+
+  def validate_zone_not_maintenance?
+    errors.add(:zone, N_('cannot be maintenance zone')) if zone == Zone.maintenance_zone
+  end
 
   def hostname
     h = super
@@ -154,7 +160,6 @@ class MiqServer < ApplicationRecord
 
   def self.seed
     unless exists?(:guid => my_guid)
-      Zone.seed
       _log.info("Creating Default MiqServer with guid=[#{my_guid}], zone=[#{Zone.default_zone.name}]")
       create!(:guid => my_guid, :zone => Zone.default_zone)
       my_server_clear_cache
@@ -233,7 +238,7 @@ class MiqServer < ApplicationRecord
     server.ntp_reload
     server.set_database_application_name
 
-    EvmDatabase.seed_last
+    EvmDatabase.seed_rest
 
     start_memcached
     MiqApache::Control.restart if MiqEnvironment::Command.supports_apache?
@@ -349,7 +354,9 @@ class MiqServer < ApplicationRecord
 
     begin
       _log.info("Reconnecting to database after error...")
-      ActiveRecord::Base.connection.reconnect!
+      # Remove the connection and establish a new one since reconnect! doesn't always play nice with SSL postgresql connections
+      spec_name = ActiveRecord::Base.connection_specification_name
+      ActiveRecord::Base.establish_connection(ActiveRecord::Base.remove_connection(spec_name))
     rescue Exception => err
       _log.error("#{err.message}, during reconnect!")
     else

@@ -1,7 +1,8 @@
 # This file is copied to spec/ when you run 'rails generate rspec:install'
-
-if ENV["TRAVIS"]
+if ENV["TRAVIS"] || ENV['CI']
   require 'coveralls'
+  require 'simplecov'
+  SimpleCov.start
   Coveralls.wear!('rails') { add_filter("/spec/") }
 end
 
@@ -21,6 +22,8 @@ Dir[Rails.root.join("spec/support/**/*.rb")].each { |f| require f }
 Dir[Rails.root.join("spec/shared/**/*.rb")].each { |f| require f }
 # include the manageiq-gems-pending matchers
 Dir[ManageIQ::Gems::Pending.root.join("spec/support/custom_matchers/*.rb")].each { |f| require f }
+# include the manageiq-password matchers
+require "manageiq/password/rspec_matchers"
 
 # To be extracted with embedded_ansible
 require ManageIQ::Providers::AnsibleTower::Engine.root.join("spec/support/vcr_helper.rb").to_s

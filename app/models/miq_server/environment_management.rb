@@ -55,7 +55,9 @@ module MiqServer::EnvironmentManagement
     end
 
     def validate_database
-      ActiveRecord::Base.connection.reconnect!
+      # Remove the connection and establish a new one since reconnect! doesn't always play nice with SSL postgresql connections
+      spec_name = ActiveRecord::Base.connection_specification_name
+      ActiveRecord::Base.establish_connection(ActiveRecord::Base.remove_connection(spec_name))
 
       # Log the Versions
       _log.info("Database Adapter: [#{ActiveRecord::Base.connection.adapter_name}], version: [#{ActiveRecord::Base.connection.database_version}]")                   if ActiveRecord::Base.connection.respond_to?(:database_version)
@@ -99,15 +101,16 @@ module MiqServer::EnvironmentManagement
     disks.each do |disk|
       next unless disk[:used_bytes_percent].to_i > threshold
       disk_usage_event = case disk[:mount_point].chomp
-                         when '/'                then 'evm_server_system_disk_high_usage'
-                         when '/boot'            then 'evm_server_boot_disk_high_usage'
-                         when '/home'            then 'evm_server_home_disk_high_usage'
-                         when '/var'             then 'evm_server_var_disk_high_usage'
-                         when '/var/log'         then 'evm_server_var_log_disk_high_usage'
-                         when '/var/log/audit'   then 'evm_server_var_log_audit_disk_high_usage'
-                         when '/var/www/miq_tmp' then 'evm_server_miq_tmp_disk_high_usage'
-                         when '/tmp'             then 'evm_server_tmp_disk_high_usage'
-                         when %r{lib/pgsql}      then 'evm_server_db_disk_high_usage'
+                         when '/'                     then 'evm_server_system_disk_high_usage'
+                         when '/boot'                 then 'evm_server_boot_disk_high_usage'
+                         when '/home'                 then 'evm_server_home_disk_high_usage'
+                         when '/var'                  then 'evm_server_var_disk_high_usage'
+                         when '/var/log'              then 'evm_server_var_log_disk_high_usage'
+                         when '/var/log/audit'        then 'evm_server_var_log_audit_disk_high_usage'
+                         when '/var/www/miq/vmdb/log' then 'evm_server_log_disk_high_usage'
+                         when '/var/www/miq_tmp'      then 'evm_server_miq_tmp_disk_high_usage'
+                         when '/tmp'                  then 'evm_server_tmp_disk_high_usage'
+                         when %r{lib/pgsql}           then 'evm_server_db_disk_high_usage'
                          end
 
       next unless disk_usage_event

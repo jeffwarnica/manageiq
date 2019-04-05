@@ -1,9 +1,9 @@
-FactoryGirl.define do
+FactoryBot.define do
   factory :container_label_tag_mapping do
-    label_name 'name'
+    label_name { 'name' }
 
     trait :only_nodes do
-      labeled_resource_type 'ContainerNode'
+      labeled_resource_type { 'ContainerNode' }
     end
   end
 
@@ -15,7 +15,7 @@ FactoryGirl.define do
     end
 
     tag do
-      category = FactoryGirl.create(:classification,
+      category = FactoryBot.create(:classification,
                                     :name         => category_name,
                                     :description  => category_description,
                                     :single_value => true,

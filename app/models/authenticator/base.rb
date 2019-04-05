@@ -49,9 +49,8 @@ module Authenticator
       user_or_taskid = nil
 
       begin
-        audit = {:event => audit_event, :userid => username}
-
         username = normalize_username(username)
+        audit = {:event => audit_event, :userid => username}
 
         authenticated = options[:authorize_only] || _authenticate(username, password, request)
         if authenticated
@@ -124,6 +123,7 @@ module Authenticator
           matching_groups = match_groups(groups_for(identity))
           userid, user = find_or_initialize_user(identity, username)
           update_user_attributes(user, userid, identity)
+          audit_new_user(audit, user) if user.new_record?
           user.miq_groups = matching_groups
 
           if matching_groups.empty?
@@ -195,6 +195,12 @@ module Authenticator
       "authenticate_#{self.class.short_name}"
     end
 
+    def audit_new_user(audit, user)
+      msg = "User creation successful for User: #{user.name} with ID: #{user.userid}"
+      audit_success(audit.merge(:message => msg))
+      MiqEvent.raise_evm_event_queue(MiqServer.my_server, "user_created", :event_details => msg)
+    end
+
     def authorize?
       config[:"#{self.class.short_name}_role"] == true
     end
@@ -217,11 +223,11 @@ module Authenticator
     end
 
     def decrypt_ldap_password(config)
-      config[:bind_pwd] = MiqPassword.try_decrypt(config[:bind_pwd])
+      config[:bind_pwd] = ManageIQ::Password.try_decrypt(config[:bind_pwd])
     end
 
     def encrypt_ldap_password(config)
-      config[:bind_pwd] = MiqPassword.try_encrypt(config[:bind_pwd])
+      config[:bind_pwd] = ManageIQ::Password.try_encrypt(config[:bind_pwd])
     end
 
     def authorize_queue(username, _request, _options, *args)

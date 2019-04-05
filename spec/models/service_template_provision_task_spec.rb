@@ -1,9 +1,9 @@
 describe ServiceTemplateProvisionTask do
   context "with multiple tasks" do
     before do
-      @admin = FactoryGirl.create(:user_with_group)
+      @admin = FactoryBot.create(:user_with_group)
 
-      @request = FactoryGirl.create(:service_template_provision_request,
+      @request = FactoryBot.create(:service_template_provision_request,
                                     :description => 'Service Request',
                                     :requester   => @admin)
       @task_0 = create_stp('Task 0 (Top)')
@@ -33,7 +33,7 @@ describe ServiceTemplateProvisionTask do
       else
         options = {}
       end
-      FactoryGirl.create(:service_template_provision_task,
+      FactoryBot.create(:service_template_provision_task,
                          :description    => description,
                          :userid         => @admin.userid,
                          :state          => state,
@@ -42,7 +42,7 @@ describe ServiceTemplateProvisionTask do
     end
 
     def service_resource_id(index, scaling_max)
-      FactoryGirl.create(:service_resource,
+      FactoryBot.create(:service_resource,
                          :provision_index => index,
                          :scaling_min     => 1,
                          :scaling_max     => scaling_max,
@@ -76,35 +76,61 @@ describe ServiceTemplateProvisionTask do
     end
 
     describe "#deliver_to_automate" do
-      it "delivers to the queue when the state is not active" do
-        @service              = FactoryGirl.create(:service, :name => 'Test Service')
-        @task_0.destination   = @service
-        @task_0.state         = 'pending'
-        zone                  = FactoryGirl.create(:zone, :name => "special")
-        orchestration_manager = FactoryGirl.create(:ext_management_system, :zone => zone)
-        @task_0.source        = FactoryGirl.create(:service_template_orchestration, :orchestration_manager => orchestration_manager)
-        automate_args         = {
-          :object_type      => 'ServiceTemplateProvisionTask',
-          :object_id        => @task_0.id,
-          :namespace        => 'Service/Provisioning/StateMachines',
-          :class_name       => 'ServiceProvision_Template',
-          :instance_name    => 'clone_to_service',
-          :automate_message => 'create',
-          :attrs            => {'request' => 'clone_to_service', 'Service::Service' => @service.id},
-          :user_id          => @admin.id,
-          :miq_group_id     => @admin.current_group_id,
-          :tenant_id        => @admin.current_tenant.id,
-        }
-        allow(@request).to receive(:approved?).and_return(true)
-        expect(MiqQueue).to receive(:put).with(
-          :class_name     => 'MiqAeEngine',
-          :method_name    => 'deliver',
-          :args           => [automate_args],
-          :role           => 'automate',
-          :zone           => 'special',
-          :tracking_label => tracking_label
-        )
-        @task_0.deliver_to_automate
+      context "when the state is not active" do
+        before do
+          @st_zone            = FactoryBot.create(:zone, :name => "service_template_zone")
+          @service            = FactoryBot.create(:service, :name => 'Test Service')
+          @task_0.source      = FactoryBot.create(:service_template, :zone => @st_zone)
+          @task_0.destination = @service
+          @task_0.state       = 'pending'
+          allow(MiqServer).to receive(:my_zone).and_return('a_server_zone')
+          allow(@request).to receive(:approved?).and_return(true)
+        end
+
+        it "delivers to the queue" do
+          zone                  = FactoryBot.create(:zone, :name => "special")
+          orchestration_manager = FactoryBot.create(:ext_management_system, :zone => zone)
+          @task_0.source        = FactoryBot.create(:service_template_orchestration, :orchestration_manager => orchestration_manager)
+          automate_args         = {
+            :object_type      => 'ServiceTemplateProvisionTask',
+            :object_id        => @task_0.id,
+            :namespace        => 'Service/Provisioning/StateMachines',
+            :class_name       => 'ServiceProvision_Template',
+            :instance_name    => 'clone_to_service',
+            :automate_message => 'create',
+            :attrs            => {'request' => 'clone_to_service', 'Service::Service' => @service.id},
+            :user_id          => @admin.id,
+            :miq_group_id     => @admin.current_group_id,
+            :tenant_id        => @admin.current_tenant.id,
+          }
+          expect(MiqQueue).to receive(:put).with(
+            :class_name     => 'MiqAeEngine',
+            :method_name    => 'deliver',
+            :args           => [automate_args],
+            :role           => 'automate',
+            :zone           => 'special',
+            :tracking_label => tracking_label
+          )
+          @task_0.deliver_to_automate
+        end
+
+        it "sets queue item to zone specified in dialog" do
+          zone = FactoryBot.create(:zone, :name => 'dialog_zone')
+          @task_0.update_attributes(:options => {:dialog => {"dialog_zone" => zone.name}})
+          expect(MiqQueue).to receive(:put).with(hash_including(:zone => zone.name))
+          @task_0.deliver_to_automate
+        end
+
+        it "sets queue item to zone specified in service template without dialog" do
+          expect(MiqQueue).to receive(:put).with(hash_including(:zone => @st_zone.name))
+          @task_0.deliver_to_automate
+        end
+
+        it "sets queue item to server's zone if not specified in dialog and service template" do
+          @task_0.source.update_attributes(:zone => nil)
+          expect(MiqQueue).to receive(:put).with(hash_including(:zone => 'a_server_zone'))
+          @task_0.deliver_to_automate
+        end
       end
 
       it "raises an error when the state is already active" do
@@ -223,7 +249,7 @@ describe ServiceTemplateProvisionTask do
 
     context "with a service" do
       before do
-        @service = FactoryGirl.create(:service, :name => 'Test Service')
+        @service = FactoryBot.create(:service, :name => 'Test Service')
       end
 
       it "raise provisioned event" do
@@ -235,7 +261,7 @@ describe ServiceTemplateProvisionTask do
     end
 
     describe "#mark_execution_servers" do
-      let(:server) { FactoryGirl.create(:miq_server) }
+      let(:server) { FactoryBot.create(:miq_server) }
       before { allow(MiqServer).to receive(:my_server).and_return(server) }
 
       it "with new server id" do

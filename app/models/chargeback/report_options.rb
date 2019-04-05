@@ -18,10 +18,25 @@ class Chargeback
     :ext_options,
     :include_metrics,      # enable charging allocated resources with C & U
     :method_for_allocated_metrics,
-    :group_by_tenant?
+    :group_by_tenant?,
+    :group_by_date_only?,
+    :cumulative_rate_calculation,
   ) do
     def self.new_from_h(hash)
       new(*hash.values_at(*members))
+    end
+
+    # skip metric value field because we don't want
+    # to accumulate metric values(only costs)
+    def skip_field_accumulation?(field, value)
+      return false if cumulative_rate_calculation? == false
+      return false unless field.ends_with?("_metric") && value
+
+      true
+    end
+
+    def cumulative_rate_calculation?
+      !!self[:cumulative_rate_calculation]
     end
 
     ALLOCATED_METHODS_WHITELIST = %i(max avg current_value).freeze
@@ -129,6 +144,10 @@ class Chargeback
 
     def group_by_tenant?
       self[:groupby] == 'tenant'
+    end
+
+    def group_by_date_only?
+      self[:groupby] == 'date-only'
     end
 
     private

@@ -4,6 +4,9 @@ name,description,event_type,set_type
 #
 login_failed,Login failed,Default,authentication
 
+# Authorization
+user_created,User created,Default,authorization
+
 #
 # EVM Server operations
 #
@@ -18,6 +21,7 @@ evm_server_home_disk_high_usage,Server High /home Disk Usage,Default,evm_operati
 evm_server_var_disk_high_usage,Server High /var Disk Usage,Default,evm_operations
 evm_server_var_log_disk_high_usage,Server High /var/log Disk Usage,Default,evm_operations
 evm_server_var_log_audit_disk_high_usage,Server High /var/log/audit Disk Usage,Default,evm_operations
+evm_server_log_disk_high_usage,Server High /var/www/miq/vmdb/log Disk Usage,Default,evm_operations
 evm_server_miq_tmp_disk_high_usage,Server High Temp Storage Disk Usage,Default,evm_operations
 evm_server_tmp_disk_high_usage,Server High /tmp Disk Usage,Default,evm_operations
 evm_server_db_disk_high_usage,Server High DB Disk Usage,Default,evm_operations
@@ -180,6 +184,7 @@ request_orchestration_stack_retire,Orchestration Stack Retire Request,Default,or
 # Container Operations
 #
 request_containerimage_scan,Container Image Analysis Request,Default,container_operations
+containerimage_scan_abort,Container Image Analysis Failure,Default,container_operations
 containerimage_scan_complete,Container Image Analysis Complete,Default,container_operations
 containerimage_created,Container Image Discovered,Default,container_operations
 containerimage_compliance_check,Container Image Compliance Check,Default,compliance

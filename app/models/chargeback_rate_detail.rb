@@ -241,6 +241,9 @@ class ChargebackRateDetail < ApplicationRecord
   def metric_and_cost_by(consumption, options)
     metric_value = chargeable_field.measure(consumption, options, sub_metric)
     hourly_cost = hourly_cost(metric_value, consumption)
+
+    _log.debug("Consumption interval: #{consumption.consumption_start} -  #{consumption.consumption_end}")
+    _log.debug("Consumed hours: #{consumption.consumed_hours_in_interval}")
     cost = chargeable_field.metering? ? hourly_cost : hourly_cost * consumption.consumed_hours_in_interval
     [metric_value, cost]
   end
@@ -275,7 +278,7 @@ class ChargebackRateDetail < ApplicationRecord
 
       chargeback_rate[:rates].each do |detail|
         detail_new = ChargebackRateDetail.new(detail.slice(*ChargebackRateDetail::FORM_ATTRIBUTES))
-        detail_new.detail_currency = ChargebackRateDetailCurrency.find_by(:name => detail[:type_currency])
+        detail_new.detail_currency = ChargebackRateDetailCurrency.find_by(:code => detail[:type_currency])
         detail_new.metric = detail[:metric]
         detail_new.chargeable_field = ChargeableField.find_by(:metric => detail.delete(:metric))
 

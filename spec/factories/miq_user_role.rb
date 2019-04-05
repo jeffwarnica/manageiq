@@ -1,12 +1,12 @@
-FactoryGirl.define do
+FactoryBot.define do
   sequence(:miq_user_role_name) { |n| "UserRole #{seq_padded_for_sorting(n)}" }
 
   factory :miq_user_role do
     transient do
       # e.g.: miq_request_approval
-      features nil
+      features { nil }
       # e.g.: super_administrator
-      role nil
+      role { nil }
     end
 
     name { |ur| ur.role ? "EvmRole-#{ur.role}" : generate(:miq_user_role_name) }
@@ -25,8 +25,6 @@ FactoryGirl.define do
           # admins now using a feature instead of a roll
           if evaluator.role == "super_administrator"
             e_features = MiqProductFeature::SUPER_ADMIN_FEATURE
-          elsif evaluator.role == "administrator"
-            e_features = MiqProductFeature::ADMIN_FEATURE
           end
         end
       end
@@ -36,7 +34,7 @@ FactoryGirl.define do
           if f.kind_of?(MiqProductFeature) # TODO: remove class reference
             f
           else
-            MiqProductFeature.find_by(:identifier => f) || FactoryGirl.create(:miq_product_feature, :identifier => f)
+            MiqProductFeature.find_by(:identifier => f) || FactoryBot.create(:miq_product_feature, :identifier => f)
           end
         end
       end

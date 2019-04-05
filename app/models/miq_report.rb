@@ -47,7 +47,7 @@ class MiqReport < ApplicationRecord
   attr_accessor :ext_options
   attr_accessor_that_yamls :table, :sub_table, :filter_summary, :extras, :ids, :scoped_association, :html_title, :file_name,
                            :extras, :record_id, :tl_times, :user_categories, :trend_data, :performance, :include_for_find,
-                           :report_run_time, :chart
+                           :report_run_time, :chart, :skip_references
 
   attr_accessor_that_yamls :reserved # For legacy imports
 
@@ -150,7 +150,7 @@ class MiqReport < ApplicationRecord
 
     params['filter'] = MiqExpression.new("=" => {"field" => "MiqReport-id",
                                                  "value" => id})
-    params['towhat'] = "MiqReport"
+    params['resource_type'] = "MiqReport"
     params['prod_default'] = "system"
 
     MiqSchedule.create!(params)
@@ -240,6 +240,16 @@ class MiqReport < ApplicationRecord
 
   def self.display_name(number = 1)
     n_('Report', 'Reports', number)
+  end
+
+  def userid=(_userid)
+    # Stubbed method to handle 'userid' attr that may be present in the exported hash
+    # which does not exist in the MiqReport class
+  end
+
+  def group_description=(_group_description)
+    # Stubbed method to handle 'group_description' attr that may be present in the exported hash
+    # which does not exist in the MiqReport class
   end
 
   private

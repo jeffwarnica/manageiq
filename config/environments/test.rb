@@ -12,16 +12,17 @@ Vmdb::Application.configure do
 
   # Print deprecation notices to the stderr
   #ActiveSupport::Deprecation.behavior = :stderr
-  ActiveSupport::Deprecation.behavior = :silence
 
   # Configure static asset server for tests with Cache-Control for performance
   config.public_file_server.enabled = true
-  config.static_cache_control = "public, max-age=3600"
+  config.public_file_server.headers = { 'Cache-Control' => 'public, max-age=3600' }
 
   # Avoid potential warnings and race conditions
   config.assets.configure do |env|
     env.cache = ActiveSupport::Cache.lookup_store(:memory_store)
   end
+
+  config.assets.compile = ENV['TEST_SUITE'] == 'spec:javascript'
 
   # Log error messages when you accidentally call methods on nil
   config.whiny_nils = true
@@ -60,7 +61,7 @@ Vmdb::Application.configure do
 end
 
 require "minitest"
-require "factory_girl"
+require "factory_bot"
 require "timecop"
 require "vcr"
 require "webmock/rspec"

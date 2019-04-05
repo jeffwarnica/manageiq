@@ -16,7 +16,7 @@ describe MiqWorker do
   context ".sync_workers" do
     it "stops extra workers, returning deleted pids" do
       expect_any_instance_of(described_class).to receive(:stop)
-      worker = FactoryGirl.create(:miq_worker, :status => "started")
+      worker = FactoryBot.create(:miq_worker, :status => "started")
       worker.class.workers = 0
       expect(worker.class.sync_workers).to eq(:adds => [], :deletes => [worker.pid])
     end
@@ -36,14 +36,14 @@ describe MiqWorker do
     end
 
     before do
-      active_roles = %w(foo bar).map { |rn| FactoryGirl.create(:server_role, :name => rn) }
+      active_roles = %w(foo bar).map { |rn| FactoryBot.create(:server_role, :name => rn) }
       @server = EvmSpecHelper.local_miq_server(:active_roles => active_roles)
     end
 
     context "clean_active_messages" do
       before do
-        @worker = FactoryGirl.create(:miq_worker, :miq_server => @server)
-        @message = FactoryGirl.create(:miq_queue, :handler => @worker, :state => 'dequeue')
+        @worker = FactoryBot.create(:miq_worker, :miq_server => @server)
+        @message = FactoryBot.create(:miq_queue, :handler => @worker, :state => 'dequeue')
       end
 
       it "normal" do
@@ -207,6 +207,41 @@ describe MiqWorker do
       end
     end
 
+    context "with mixed memory value types" do
+      # Same settings from above, just using integers and integers/floats as strings
+      let(:settings) do
+        {
+          :workers => {
+            :worker_base => {
+              :defaults          => {:memory_threshold => "100.megabytes"},
+              :queue_worker_base => {
+                :defaults           => {:memory_threshold => 314_572_800}, # 300.megabytes
+                :ems_refresh_worker => {
+                  :defaults                  => {:memory_threshold => "524288000"}, # 500.megabytes
+                  :ems_refresh_worker_amazon => {
+                    :memory_threshold => "1181116006.4" # 1.1.gigabtye
+                  }
+                }
+              }
+            }
+          },
+          :ems     => {:ems_amazon => {}}
+        }
+      end
+
+      let(:worker_base)  { MiqWorker.worker_settings[:memory_threshold] }
+      let(:queue_worker) { MiqQueueWorkerBase.worker_settings[:memory_threshold] }
+      let(:ems_worker)   { ManageIQ::Providers::BaseManager::RefreshWorker.worker_settings[:memory_threshold] }
+      let(:aws_worker)   { ManageIQ::Providers::Amazon::CloudManager::RefreshWorker.worker_settings[:memory_threshold] }
+
+      it "converts everyting to integers properly" do
+        expect(worker_base).to  eq(100.megabytes)
+        expect(queue_worker).to eq(300.megabytes)
+        expect(ems_worker).to   eq(500.megabytes)
+        expect(aws_worker).to   eq(1_181_116_006)
+      end
+    end
+
     it "at the base class" do
       actual = MiqWorker.worker_settings[:memory_threshold]
       expect(actual).to eq(100.megabytes)
@@ -229,28 +264,17 @@ describe MiqWorker do
     before do
       allow(described_class).to receive(:nice_increment).and_return("+10")
 
-      @zone = FactoryGirl.create(:zone)
-      @server = FactoryGirl.create(:miq_server, :zone => @zone)
+      @zone = FactoryBot.create(:zone)
+      @server = FactoryBot.create(:miq_server, :zone => @zone)
       allow(MiqServer).to receive(:my_server).and_return(@server)
-      @worker = FactoryGirl.create(:ems_refresh_worker_amazon, :miq_server => @server)
+      @worker = FactoryBot.create(:ems_refresh_worker_amazon, :miq_server => @server)
 
-      @server2 = FactoryGirl.create(:miq_server, :zone => @zone)
-      @worker2 = FactoryGirl.create(:ems_refresh_worker_amazon, :miq_server => @server2)
+      @server2 = FactoryBot.create(:miq_server, :zone => @zone)
+      @worker2 = FactoryBot.create(:ems_refresh_worker_amazon, :miq_server => @server2)
     end
 
     it ".server_scope" do
       expect(described_class.server_scope).to eq([@worker])
-    end
-
-    it ".server_scope with a different server" do
-      expect(described_class.server_scope(@server2.id)).to eq([@worker2])
-    end
-
-    it ".server_scope after already scoping on a different server" do
-      described_class.where(:miq_server_id => @server2.id).scoping do
-        expect(described_class.server_scope).to eq([@worker2])
-        expect(described_class.server_scope(@server.id)).to eq([@worker2])
-      end
     end
 
     describe "#worker_settings" do
@@ -338,7 +362,7 @@ describe MiqWorker do
   context "instance" do
     before do
       allow(described_class).to receive(:nice_increment).and_return("+10")
-      @worker = FactoryGirl.create(:miq_worker)
+      @worker = FactoryBot.create(:miq_worker)
     end
 
     it "#worker_options" do
@@ -390,14 +414,14 @@ describe MiqWorker do
       end
 
       it "true if stopping and last heartbeat is within the queue message timeout of an active message" do
-        @worker.messages << FactoryGirl.create(:miq_queue, :msg_timeout => 60.minutes)
+        @worker.messages << FactoryBot.create(:miq_queue, :msg_timeout => 60.minutes)
         @worker.update(:status         => described_class::STATUS_STOPPING,
                        :last_heartbeat => 90.minutes.ago)
         expect(subject).to be_truthy
       end
 
       it "false if stopping and last heartbeat is older than the queue message timeout of the work item" do
-        @worker.messages << FactoryGirl.create(:miq_queue, :msg_timeout => 60.minutes, :state => "dequeue")
+        @worker.messages << FactoryBot.create(:miq_queue, :msg_timeout => 60.minutes, :state => "dequeue")
         @worker.update(:status         => described_class::STATUS_STOPPING,
                        :last_heartbeat => 30.minutes.ago)
         expect(subject).to be_falsey

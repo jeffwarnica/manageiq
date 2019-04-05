@@ -15,6 +15,8 @@ class MiqAeClass < ApplicationRecord
   validates_format_of     :name, :with    => /\A[\w.-]+\z/i,
                                  :message => N_("may contain only alphanumeric and _ . - characters")
 
+  virtual_attribute :fqname, :string
+
   def self.find_by_fqname(fqname, args = {})
     ns, name = parse_fqname(fqname)
     find_by_namespace_and_name(ns, name, args)
@@ -190,11 +192,15 @@ class MiqAeClass < ApplicationRecord
     class_array
   end
 
+  private_class_method :get_sorted_homonym_class_across_domains
+
   def self.remove_domain_from_fqns(fqname)
     parts = fqname.split('/')
     parts.shift
     parts.join('/')
   end
+
+  private_class_method :remove_domain_from_fqns
 
   def self.get_unique_instances_from_classes(klass_array)
     name_set = Set.new
@@ -209,6 +215,8 @@ class MiqAeClass < ApplicationRecord
     end.compact.flatten
   end
 
+  private_class_method :get_unique_instances_from_classes
+
   def self.get_same_instance_from_classes(klass_array, instance)
     klass_array.collect do |klass|
       cls = find_by(:id => klass.id)
@@ -216,4 +224,6 @@ class MiqAeClass < ApplicationRecord
       cls.ae_instances.select { |a| File.fnmatch(instance, a.name, File::FNM_CASEFOLD) }
     end.compact.flatten
   end
+
+  private_class_method :get_same_instance_from_classes
 end

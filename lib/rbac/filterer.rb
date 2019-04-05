@@ -51,6 +51,7 @@ module Rbac
       Service
       ServiceTemplate
       Storage
+      Switch
       VmOrTemplate
     )
 
@@ -253,10 +254,22 @@ module Rbac
 
       scope = include_references(scope, klass, include_for_find, exp_includes, skip_references)
       scope = scope.limit(limit).offset(offset) if attrs[:apply_limit_in_sql]
+
+      if inline_view?(options, scope)
+        inner_scope = scope.except(:select, :includes, :references)
+        scope.includes_values.each { |hash| inner_scope = add_joins(klass, inner_scope, hash) }
+        scope = scope.from(Arel.sql("(#{inner_scope.to_sql})").as(scope.table_name))
+                     .except(:offset, :limit, :order, :where)
+
+        # the auth_count needs to come from the inner query (the query with the limit)
+        if !options[:skip_counts] && (attrs[:apply_limit_in_sql] && limit)
+          auth_count = inner_scope.except(:offset, :limit, :order).count(:all)
+        end
+      end
       targets = scope
 
       unless options[:skip_counts]
-        auth_count = attrs[:apply_limit_in_sql] && limit ? targets.except(:offset, :limit, :order).count(:all) : targets.length
+        auth_count ||= attrs[:apply_limit_in_sql] && limit ? targets.except(:offset, :limit, :order).count(:all) : targets.length
       end
 
       if search_filter && targets && (!exp_attrs || !exp_attrs[:supported_by_sql])
@@ -285,6 +298,20 @@ module Rbac
       klass.respond_to?(:finder_needs_type_condition?) ? klass.finder_needs_type_condition? : false
     end
 
+    # We would like to use an inline view if:
+    #   - we enabled viewing an inline view
+    #   - we have virtual attributes
+    #   - we are not bringing back the whole table (i.e. we do have a where() or a limit())
+    #   - we have a non qualified table name (otherwise our inline view will blow up)
+    #   - we are using a scope (instead of a relation - which doesn't do includes so well)
+    def inline_view?(options, scope)
+      options[:use_sql_view] &&
+        options[:extra_cols] &&
+        (scope.limit_value || scope.where_values_hash.present?) &&
+        !scope.table_name&.include?(".") &&
+        scope.respond_to?(:includes_values)
+    end
+
     # This is a very primitive way of determining whether we want to skip
     # adding references to the query.
     #
@@ -303,8 +330,9 @@ module Rbac
     # as done previously.
     def skip_references?(scope, options, attrs, exp_sql, exp_includes)
       return false if scope.singleton_class.included_modules.include?(ActiveRecord::NullRelation)
-      options[:extra_cols].blank? &&
-        (!attrs[:apply_limit_in_sql] && (exp_sql.nil? || exp_includes.nil?))
+      options[:skip_references] ||
+      (options[:extra_cols].blank? &&
+        (!attrs[:apply_limit_in_sql] && (exp_sql.nil? || exp_includes.nil?)))
     end
 
     def include_references(scope, klass, include_for_find, exp_includes, skip)
@@ -340,6 +368,24 @@ module Rbac
         scope = scope.references(include_for_find).references(exp_includes)
       end
       scope
+    end
+
+    # @param includes [Array, Hash]
+    def add_joins(klass, scope, includes)
+      return scope unless includes
+      includes = Array(includes) unless includes.kind_of?(Enumerable)
+      includes.each do |association, value|
+        if table_include?(klass, association)
+          scope = value ? scope.left_outer_joins(association => value) : scope.left_outer_joins(association)
+        end
+      end
+      scope
+    end
+
+    # this is a reference to a non polymorphic table
+    def table_include?(target_klass, association)
+      reflection = target_klass.reflect_on_association(association)
+      reflection && !reflection.polymorphic?
     end
 
     def polymorphic_include?(target_klass, includes)
@@ -488,9 +534,9 @@ module Rbac
     end
 
     def get_managed_filter_object_ids(scope, filter)
-      return scope.where(filter.to_sql.first) if filter.kind_of?(MiqExpression)
       klass = scope.respond_to?(:klass) ? scope.klass : scope
       return nil if !TAGGABLE_FILTER_CLASSES.include?(safe_base_class(klass).name) || filter.blank?
+      return scope.where(filter.to_sql.first) if filter.kind_of?(MiqExpression)
       scope.find_tags_by_grouping(filter, :ns => '*').reorder(nil)
     end
 
@@ -514,15 +560,16 @@ module Rbac
       if user_or_group.try!(:self_service?) && MiqUserRole != klass
         scope.where(:id => klass == User ? user.id : miq_group.id)
       else
+        role = user_or_group.miq_user_role
         # hide creating admin group / roles from non-super administrators
-        unless user_or_group.miq_user_role&.super_admin_user?
+        unless role&.super_admin_user?
           scope = scope.with_roles_excluding(MiqProductFeature::SUPER_ADMIN_FEATURE)
         end
 
         if MiqUserRole != klass
           filtered_ids = pluck_ids(get_managed_filter_object_ids(scope, managed_filters))
-          # Non admins can only see their own groups
-          scope = scope.with_groups(user.miq_group_ids) unless user_or_group.miq_user_role&.super_admin_user?
+          # Non tenant admins can only see their own groups. Note - a super admin is also a tenant admin
+          scope = scope.with_groups(user.miq_group_ids) unless role&.tenant_admin_user?
         end
 
         scope_by_ids(scope, filtered_ids)
@@ -540,6 +587,10 @@ module Rbac
         scope = scope_to_tenant(scope, user, miq_group)
       elsif klass.respond_to?(:scope_by_cloud_tenant?) && klass.scope_by_cloud_tenant?
         scope = scope_to_cloud_tenant(scope, user, miq_group)
+      end
+
+      if klass.respond_to?(:rbac_scope_for_model)
+        scope = scope.rbac_scope_for_model(user)
       end
 
       if apply_rbac_directly?(klass)

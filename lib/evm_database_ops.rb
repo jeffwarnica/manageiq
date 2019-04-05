@@ -2,6 +2,7 @@ $LOAD_PATH << File.expand_path(__dir__)
 require 'util/postgres_admin'
 
 require 'mount/miq_generic_mount_session'
+require 'util/miq_object_storage'
 
 class EvmDatabaseOps
   include Vmdb::Logging
@@ -53,9 +54,10 @@ class EvmDatabaseOps
     #   :password => 'Zug-drep5s',
     #   :remote_file_name => "backup_1",     - Provide a base file name for the uploaded file
 
-    uri = with_mount_session(:backup, db_opts, connect_opts) do |database_opts|
+    uri = with_file_storage(:backup, db_opts, connect_opts) do |database_opts|
       validate_free_space(database_opts)
-      PostgresAdmin.backup(database_opts)
+      backup_result = PostgresAdmin.backup(database_opts)
+      backup_result
     end
     _log.info("[#{merged_db_opts(db_opts)[:dbname]}] database has been backed up to file: [#{uri}]")
     uri
@@ -64,13 +66,13 @@ class EvmDatabaseOps
   def self.dump(db_opts, connect_opts = {})
     # db_opts and connect_opts similar to .backup
 
-    uri = with_mount_session(:dump, db_opts, connect_opts) do |database_opts|
+    uri = with_file_storage(:dump, db_opts, connect_opts) do |database_opts|
       # For database dumps, this isn't going to be as accurate (since the dump
       # size will probably be larger than the calculated BD size), but it still
       # won't hurt to do as a generic way to get a rough idea if we have enough
       # disk space or the appliance for the task.
       validate_free_space(database_opts)
-      PostgresAdmin.backup(database_opts)
+      PostgresAdmin.backup_pg_dump(database_opts)
     end
     _log.info("[#{merged_db_opts(db_opts)[:dbname]}] database has been dumped up to file: [#{uri}]")
     uri
@@ -87,12 +89,12 @@ class EvmDatabaseOps
     #   :username => 'samba_one',
     #   :password => 'Zug-drep5s',
 
-    uri = with_mount_session(:restore, db_opts, connect_opts) do |database_opts|
-      prepare_for_restore(database_opts[:local_file])
+    uri = with_file_storage(:restore, db_opts, connect_opts) do |database_opts, backup_type|
+      prepare_for_restore(database_opts[:local_file], backup_type)
 
       # remove all the connections before we restore; AR will reconnect on the next query
       ActiveRecord::Base.connection_pool.disconnect!
-      PostgresAdmin.restore(database_opts)
+      PostgresAdmin.restore(database_opts.merge(:backup_type => backup_type))
     end
     _log.info("[#{merged_db_opts(db_opts)[:dbname]}] database has been restored from file: [#{uri}]")
     uri
@@ -102,31 +104,80 @@ class EvmDatabaseOps
     DEFAULT_OPTS.merge(db_opts)
   end
 
-  private_class_method def self.with_mount_session(action, db_opts, connect_opts)
-    db_opts = DEFAULT_OPTS.merge(db_opts)
+  STORAGE_ACTIONS_TO_METHODS = { :backup => :add, :dump => :add, :restore => :download }.freeze
+  private_class_method def self.with_file_storage(action, db_opts, connect_opts)
+    db_opts = merged_db_opts(db_opts)
 
     if db_opts[:local_file].nil?
       if action == :restore
         uri = connect_opts[:uri]
-        connect_opts[:uri] = File.dirname(connect_opts[:uri])
+
+        connect_uri        = URI::Generic.new(*URI.split(uri))
+        connect_uri.path   = File.dirname(connect_uri.path)
+        connect_opts[:uri] = connect_uri.to_s
       else
         connect_opts[:remote_file_name] ||= File.basename(backup_file_name(action))
-        backup_folder = action == :dump ? "db_dump" : "db_backup"
-        uri = File.join(connect_opts[:uri], backup_folder, connect_opts[:remote_file_name])
+        #
+        # If the passed in URI contains query parameters, ignore them
+        # when creating the dump file name. They'll be used in the session object.
+        #
+        uri_parts = [connect_opts[:uri].split('?')[0]]
+        uri_parts << (action == :dump ? "db_dump" : "db_backup") unless connect_opts[:skip_directory]
+        uri_parts << connect_opts[:remote_file_name]
+        uri = File.join(uri_parts)
       end
+    else
+      uri = db_opts[:local_file]
 
-      session = MiqGenericMountSession.new_session(connect_opts)
-      db_opts[:local_file] = session.uri_to_local_path(uri)
+      # HACK(ish): This just puts the bare minimum necessary for URI.parse to
+      # recognize the :uri option as "file" scheme, and allows MiqFileStorage
+      # to then instantiate MiqLocalMountSession below in the
+      # `.with_interface_class` method.
+      connect_opts[:uri] = "file://"
     end
 
-    block_result = yield db_opts if block_given?
-    uri || block_result
-  ensure
-    session.disconnect if session
+    MiqFileStorage.with_interface_class(connect_opts) do |file_storage|
+      send_args = [uri, db_opts[:byte_count]].compact
+
+      if action == :restore
+        # `MiqFileStorage#download` requires a `nil` passed to the block form
+        # to accommodate streaming
+        send_args.unshift(nil)
+        magic_numbers = {
+          :pgdump     => PostgresAdmin::PG_DUMP_MAGIC,
+          :basebackup => PostgresAdmin::BASE_BACKUP_MAGIC
+        }
+        backup_type = file_storage.magic_number_for(uri, :accepted => magic_numbers)
+      end
+
+      # Note:  `input_path` will always be a fifo stream (input coming from
+      # PostgresAdmin, and the output going to the `uri`), since we want to
+      # maintain the same interface for all backup types.
+      #
+      # This means that `uri` will always be the final destination, but
+      # `input_path` below will be an intermediary fifo that will take the
+      # input from `pg_dump`, `pg_restore`, or `pg_basebackup`, and streams the
+      # results from those commands (in ruby) it to whatever file storage
+      # endpoint `uri` is pointing to.
+      #
+      # This also makes sure that the streamed output is never written to disk
+      # locally, unless `uri` is targeting the local machine.  This is why we
+      # set `db_opts` local file to that stream.
+      file_storage.send(STORAGE_ACTIONS_TO_METHODS[action], *send_args) do |input_path|
+        db_opts[:local_file] = input_path
+        if action == :restore
+          yield(db_opts, backup_type)
+        else
+          yield(db_opts)
+        end
+      end
+    end
+
+    uri
   end
 
-  private_class_method def self.prepare_for_restore(filename)
-    backup_type = validate_backup_file_type(filename)
+  private_class_method def self.prepare_for_restore(filename, backup_type = nil)
+    backup_type ||= validate_backup_file_type(filename)
 
     if application_connections?
       message = "Database restore failed. Shut down all evmserverd processes before attempting a database restore"

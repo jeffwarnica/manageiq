@@ -25,6 +25,11 @@ class ServiceTemplateProvisionRequest < MiqRequest
   include MiqProvisionQuotaMixin
 
   def process_service_order
+    if cancel_requested?
+      do_cancel
+      return
+    end
+
     case options[:cart_state]
     when ServiceOrder::STATE_ORDERED
       ServiceOrder.order_immediately(self, requester)
@@ -38,6 +43,7 @@ class ServiceTemplateProvisionRequest < MiqRequest
   end
 
   def my_zone
+    @my_zone ||= dialog_zone || service_template.my_zone
   end
 
   def provision_dialog

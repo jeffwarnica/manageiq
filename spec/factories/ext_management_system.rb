@@ -1,17 +1,27 @@
-FactoryGirl.define do
+FactoryBot.define do
   factory :ext_management_system do
     sequence(:name)      { |n| "ems_#{seq_padded_for_sorting(n)}" }
     sequence(:hostname)  { |n| "ems-#{seq_padded_for_sorting(n)}" }
     sequence(:ipaddress) { |n| ip_from_seq(n) }
     guid                 { SecureRandom.uuid }
-    zone                 { Zone.first || FactoryGirl.create(:zone) }
+    zone                 { FactoryBot.create(:zone) }
     storage_profiles     { [] }
+
+    # authorizations
+
+    transient do
+      authtype { nil }
+    end
+
+    after(:create) do |ems, ev|
+      Array(ev.authtype).each { |a| ems.authentications << FactoryBot.create(:authentication, :authtype => a) }
+    end
 
     # Traits
 
     trait :with_clusters do
       transient do
-        cluster_count 3
+        cluster_count { 3 }
       end
 
       after :create do |ems, evaluator|
@@ -21,7 +31,7 @@ FactoryGirl.define do
 
     trait :with_storages do
       transient do
-        storage_count 3
+        storage_count { 3 }
       end
 
       after :create do |ems, evaluator|
@@ -29,9 +39,19 @@ FactoryGirl.define do
       end
     end
 
+    trait :with_authentication do
+      authtype { "default" }
+    end
+
+    trait :with_unvalidated_authentication do
+      after(:create) do |x|
+        x.authentications << FactoryBot.create(:authentication, :status => nil)
+      end
+    end
+
     trait :with_invalid_authentication do
       after(:create) do |x|
-        x.authentications << FactoryGirl.create(:authentication, :status => "invalid")
+        x.authentications << FactoryBot.create(:authentication, :status => "invalid")
       end
     end
   end
@@ -124,16 +144,7 @@ FactoryGirl.define do
 
   factory :ems_vmware_with_authentication,
           :parent => :ems_vmware do
-    after(:create) do |x|
-      x.authentications << FactoryGirl.create(:authentication)
-    end
-  end
-
-  factory :ems_vmware_with_valid_authentication,
-          :parent => :ems_vmware do
-    after(:create) do |x|
-      x.authentications << FactoryGirl.create(:authentication, :status => "Valid")
-    end
+    authtype { "default" }
   end
 
   factory :ems_microsoft,
@@ -143,9 +154,7 @@ FactoryGirl.define do
 
   factory :ems_microsoft_with_authentication,
           :parent => :ems_microsoft do
-    after(:create) do |x|
-      x.authentications << FactoryGirl.create(:authentication)
-    end
+    authtype { "default" }
   end
 
   factory :ems_redhat,
@@ -155,25 +164,33 @@ FactoryGirl.define do
 
   factory :ems_redhat_v3,
           :parent => :ems_redhat do
-    api_version '3.5'
+    api_version { '3.5' }
   end
 
   factory :ems_redhat_v4,
           :parent => :ems_redhat do
-    api_version '4.0'
+    api_version { '4.0' }
   end
 
   factory :ems_redhat_with_authentication,
           :parent => :ems_redhat do
-    after(:create) do |x|
-      x.authentications << FactoryGirl.create(:authentication)
-    end
+    authtype { "default" }
+  end
+
+  trait :skip_validate do
+    to_create { |instance| instance.save(:validate => false) }
+  end
+
+  factory :ems_redhat_with_authentication_with_ca,
+          :parent => :ems_redhat do
+    certificate_authority { "cert108" }
+    authtype { "default" }
   end
 
   factory :ems_redhat_with_metrics_authentication,
           :parent => :ems_redhat do
     after(:create) do |x|
-      x.authentications << FactoryGirl.create(:authentication_redhat_metric)
+      x.authentications << FactoryBot.create(:authentication_redhat_metric)
     end
   end
 
@@ -185,26 +202,23 @@ FactoryGirl.define do
   factory :ems_openstack_infra_with_stack,
           :parent => :ems_openstack_infra do
     after :create do |x|
-      x.orchestration_stacks << FactoryGirl.create(:orchestration_stack_openstack_infra)
-      4.times { x.hosts << FactoryGirl.create(:host_openstack_infra) }
+      x.orchestration_stacks << FactoryBot.create(:orchestration_stack_openstack_infra)
+      4.times { x.hosts << FactoryBot.create(:host_openstack_infra) }
     end
   end
 
   factory :ems_openstack_infra_with_stack_and_compute_nodes,
           :parent => :ems_openstack_infra do
     after :create do |x|
-      x.orchestration_stacks << FactoryGirl.create(:orchestration_stack_openstack_infra)
-      x.hosts += [FactoryGirl.create(:host_openstack_infra_compute),
-                  FactoryGirl.create(:host_openstack_infra_compute_maintenance)]
+      x.orchestration_stacks << FactoryBot.create(:orchestration_stack_openstack_infra)
+      x.hosts += [FactoryBot.create(:host_openstack_infra_compute),
+                  FactoryBot.create(:host_openstack_infra_compute_maintenance)]
     end
   end
 
   factory :ems_openstack_infra_with_authentication,
           :parent => :ems_openstack_infra do
-    after :create do |x|
-      x.authentications << FactoryGirl.create(:authentication)
-      x.authentications << FactoryGirl.create(:authentication, :authtype => "amqp")
-    end
+    authtype { %w(default amqp) }
   end
 
   factory :ems_vmware_cloud,
@@ -223,27 +237,25 @@ FactoryGirl.define do
           :aliases => ["manageiq/providers/amazon/cloud_manager"],
           :class   => "ManageIQ::Providers::Amazon::CloudManager",
           :parent  => :ems_cloud do
-    provider_region "us-east-1"
+    provider_region { "us-east-1" }
   end
 
   factory :ems_amazon_network,
           :aliases => ["manageiq/providers/amazon/network_manager"],
           :class   => "ManageIQ::Providers::Amazon::NetworkManager",
           :parent  => :ems_network do
-    provider_region "us-east-1"
+    provider_region { "us-east-1" }
   end
 
   factory :ems_amazon_with_authentication,
           :parent => :ems_amazon do
-    after(:create) do |x|
-      x.authentications << FactoryGirl.create(:authentication)
-    end
+    authtype { "default" }
   end
 
   factory :ems_amazon_with_cloud_networks,
           :parent => :ems_amazon do
     after(:create) do |x|
-      2.times { x.cloud_networks << FactoryGirl.create(:cloud_network_amazon) }
+      2.times { x.cloud_networks << FactoryBot.create(:cloud_network_amazon) }
     end
   end
 
@@ -259,11 +271,9 @@ FactoryGirl.define do
 
   factory :ems_azure_with_authentication,
           :parent => :ems_azure do
-    azure_tenant_id "ABCDEFGHIJABCDEFGHIJ0123456789AB"
-    subscription "0123456789ABCDEFGHIJABCDEFGHIJKL"
-    after :create do |x|
-      x.authentications << FactoryGirl.create(:authentication)
-    end
+    azure_tenant_id { "ABCDEFGHIJABCDEFGHIJ0123456789AB" }
+    subscription { "0123456789ABCDEFGHIJABCDEFGHIJKL" }
+    authtype { "default" }
   end
 
   factory :ems_openstack,
@@ -273,10 +283,7 @@ FactoryGirl.define do
 
   factory :ems_openstack_with_authentication,
           :parent => :ems_openstack do
-    after :create do |x|
-      x.authentications << FactoryGirl.create(:authentication)
-      x.authentications << FactoryGirl.create(:authentication, :authtype => "amqp")
-    end
+    authtype { %w(default amqp) }
   end
 
   factory :ems_openstack_network,
@@ -296,9 +303,7 @@ FactoryGirl.define do
 
   factory :ems_google_with_authentication,
           :parent => :ems_google do
-    after(:create) do |x|
-      x.authentications << FactoryGirl.create(:authentication)
-    end
+    authtype { "default" }
   end
 
   factory :ems_google_network,
@@ -316,7 +321,7 @@ FactoryGirl.define do
   factory :ems_kubernetes_with_authentication_err,
           :parent => :ems_kubernetes do
     after :create do |x|
-      x.authentications << FactoryGirl.create(:authentication_status_error)
+      x.authentications << FactoryBot.create(:authentication_status_error)
     end
   end
 
@@ -340,14 +345,14 @@ FactoryGirl.define do
   trait(:configuration_script) do
     after(:create) do |x|
       type = (x.type.split("::")[0..2] + ["AutomationManager", "ConfigurationScript"]).join("::")
-      x.configuration_scripts << FactoryGirl.create(:configuration_script, :type => type)
+      x.configuration_scripts << FactoryBot.create(:configuration_script, :type => type)
     end
   end
 
   trait(:configuration_workflow) do
     after(:create) do |x|
       type = (x.type.split("::")[0..2] + %w(AutomationManager ConfigurationWorkflow)).join("::")
-      x.configuration_workflows << FactoryGirl.create(:configuration_workflow, :type => type)
+      x.configuration_scripts << FactoryBot.create(:configuration_workflow, :type => type)
     end
   end
 

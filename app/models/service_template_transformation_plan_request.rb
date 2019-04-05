@@ -15,6 +15,14 @@ class ServiceTemplateTransformationPlanRequest < ServiceTemplateProvisionRequest
     vm_resources.where(:status => [ServiceResource::STATUS_QUEUED, ServiceResource::STATUS_FAILED]).pluck(:resource_id)
   end
 
+  def validate_conversion_hosts
+    transformation_mapping.transformation_mapping_items.select do |item|
+      %w(EmsCluster CloudTenant).include?(item.source_type)
+    end.all? do |item|
+      item.destination.ext_management_system.conversion_hosts.present?
+    end
+  end
+
   def validate_vm(_vm_id)
     # TODO: enhance the logic to determine whether this VM can be included in this request
     true
@@ -25,12 +33,28 @@ class ServiceTemplateTransformationPlanRequest < ServiceTemplateProvisionRequest
   end
 
   def cancel
-    options['cancel_requested'] = true
-    save!
+    update_attributes(:cancelation_status => MiqRequest::CANCEL_STATUS_REQUESTED)
     miq_request_tasks.each(&:cancel)
   end
 
-  def canceling?
-    options['cancel_requested']
+  def update_request_status
+    super
+    if request_state == 'finished' && status == 'Ok'
+      Notification.create(:type => "transformation_plan_request_succeeded", :options => {:plan_name => description})
+    elsif request_state == 'finished' && status != 'Ok'
+      Notification.create(:type => "transformation_plan_request_failed", :options => {:plan_name => description}, :subject => self)
+    end
+  end
+
+  def post_create_request_tasks
+    miq_request_tasks.each do |req_task|
+      job_options = {
+        :target_class => req_task.class.name,
+        :target_id    => req_task.id
+      }
+      job = InfraConversionJob.create_job(job_options)
+      req_task.options[:infra_conversion_job_id] = job.id
+      req_task.save!
+    end
   end
 end

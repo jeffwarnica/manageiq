@@ -4,6 +4,12 @@
 #   * Roles
 #   * Tags
 #   * Service Dialogs
+#   * Provision Dialogs
+#   * Custom Buttons
+#   * SmartState Analysis Scan Profiles
+#   * Customization Templates
+#   * Reports
+#   * Widgets
 
 namespace :evm do
   namespace :export do
@@ -76,6 +82,38 @@ namespace :evm do
 
       exit # exit so that parameters to the first rake task are not run as rake tasks
     end
+
+    desc 'Exports all provision dialogs to individual YAML files'
+    task :provision_dialogs => :environment do
+      options = TaskHelpers::Exports.parse_options
+      TaskHelpers::Exports::ProvisionDialogs.new.export(options)
+
+      exit # exit so that parameters to the first rake task are not run as rake tasks
+    end
+
+    desc 'Exports all customization templates to individual YAML files'
+    task :customization_templates => :environment do
+      options = TaskHelpers::Exports.parse_options
+      TaskHelpers::Exports::CustomizationTemplates.new.export(options)
+
+      exit # exit so that parameters to the first rake task are not run as rake tasks
+    end
+
+    desc 'Exports all reports to individual YAML files'
+    task :reports => :environment do
+      options = TaskHelpers::Exports.parse_options
+      TaskHelpers::Exports::Reports.new.export(options)
+
+      exit # exit so that parameters to the first rake task are not run as rake tasks
+    end
+
+    desc 'Exports all widgets to individual YAML files'
+    task :widgets => :environment do
+      options = TaskHelpers::Exports.parse_options
+      TaskHelpers::Exports::Widgets.new.export(options)
+
+      exit # exit so that parameters to the first rake task are not run as rake tasks
+    end
   end
 
   namespace :import do
@@ -137,6 +175,46 @@ namespace :evm do
     task :service_dialogs => :environment do
       options = TaskHelpers::Imports.parse_options
       TaskHelpers::Imports::ServiceDialogs.new.import(options)
+
+      exit # exit so that parameters to the first rake task are not run as rake tasks
+    end
+
+    desc 'Imports all provision dialogs from individual YAML files'
+    task :provision_dialogs => :environment do
+      options = TaskHelpers::Imports.parse_options
+      TaskHelpers::Imports::ProvisionDialogs.new.import(options)
+
+      exit # exit so that parameters to the first rake task are not run as rake tasks
+    end
+
+    desc 'Imports all custom buttons from YAML file'
+    task :custom_buttons => :environment do
+      options = TaskHelpers::Imports.parse_options
+      TaskHelpers::Imports::CustomButtons.new.import(options)
+
+      exit # exit so that parameters to the first rake task are not run as rake tasks
+    end
+
+    desc 'Imports all customization templates from individual YAML files'
+    task :customization_templates => :environment do
+      options = TaskHelpers::Imports.parse_options
+      TaskHelpers::Imports::CustomizationTemplates.new.import(options)
+
+      exit # exit so that parameters to the first rake task are not run as rake tasks
+    end
+
+    desc 'Imports all reports from individual YAML files'
+    task :reports => :environment do
+      options = TaskHelpers::Imports.parse_options
+      TaskHelpers::Imports::Reports.new.import(options)
+
+      exit # exit so that parameters to the first rake task are not run as rake tasks
+    end
+
+    desc 'Imports all widgets from individual YAML files'
+    task :widgets => :environment do
+      options = TaskHelpers::Imports.parse_options
+      TaskHelpers::Imports::Widgets.new.import(options)
 
       exit # exit so that parameters to the first rake task are not run as rake tasks
     end

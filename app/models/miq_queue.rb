@@ -94,6 +94,8 @@ class MiqQueue < ApplicationRecord
   serialize :args, Array
   serialize :miq_callback, Hash
 
+  validates :zone, :inclusion => {:in => proc { Zone.in_my_region.pluck(:name) }}, :allow_nil => true
+
   STATE_READY   = 'ready'.freeze
   STATE_DEQUEUE = 'dequeue'.freeze
   STATE_WARN    = 'warn'.freeze
@@ -125,6 +127,11 @@ class MiqQueue < ApplicationRecord
       :handler_type => nil,
       :handler_id   => nil,
     )
+
+    if options[:zone].present? && options[:zone] == Zone.maintenance_zone&.name
+      _log.debug("MiqQueue#put skipped: #{options.inspect}")
+      return
+    end
 
     create_with_options = all.values[:create_with] || {}
     options[:priority]    ||= create_with_options[:priority] || NORMAL_PRIORITY
@@ -195,7 +202,6 @@ class MiqQueue < ApplicationRecord
       # TODO: can we transition to zone = nil
     when "notifier"
       options[:role] = service
-      options[:zone] = nil # any zone
     when "reporting"
       options[:queue_name] = "generic"
       options[:role] = service
@@ -203,6 +209,9 @@ class MiqQueue < ApplicationRecord
       options[:queue_name] = "smartproxy"
       options[:role] = "smartproxy"
     end
+
+    # Note, options[:zone] is set in 'put' via 'determine_queue_zone' and handles setting
+    # a nil (any) zone for regional roles.  Therefore, regional roles don't need to set zone here.
     put(options)
   end
 
@@ -275,7 +284,7 @@ class MiqQueue < ApplicationRecord
   # TODO (juliancheal) This is a hack. Brakeman was giving us an SQL injection
   # warning when we concatonated the queue_name string onto the query.
   # Creating two seperate queries like this, resolves the Brakeman issue, but
-  # isn't idea. This will need to be rewritten using Arel queires at some point.
+  # isn't ideal. This will need to be rewritten using Arel queries at some point.
 
   MIQ_QUEUE_PEEK = <<-EOL
     state = 'ready'
@@ -526,7 +535,7 @@ class MiqQueue < ApplicationRecord
   end
 
   def self.format_full_log_msg(msg)
-    "Message id: [#{msg.id}], #{msg.handler_type} id: [#{msg.handler_id}], Zone: [#{msg.zone}], Role: [#{msg.role}], Server: [#{msg.server_guid}], MiqTask id: [#{msg.miq_task_id}], Ident: [#{msg.queue_name}], Target id: [#{msg.target_id}], Instance id: [#{msg.instance_id}], Task id: [#{msg.task_id}], Command: [#{msg.class_name}.#{msg.method_name}], Timeout: [#{msg.msg_timeout}], Priority: [#{msg.priority}], State: [#{msg.state}], Deliver On: [#{msg.deliver_on}], Data: [#{msg.data.nil? ? "" : "#{msg.data.length} bytes"}], Args: #{MiqPassword.sanitize_string(msg.args.inspect)}"
+    "Message id: [#{msg.id}], #{msg.handler_type} id: [#{msg.handler_id}], Zone: [#{msg.zone}], Role: [#{msg.role}], Server: [#{msg.server_guid}], MiqTask id: [#{msg.miq_task_id}], Ident: [#{msg.queue_name}], Target id: [#{msg.target_id}], Instance id: [#{msg.instance_id}], Task id: [#{msg.task_id}], Command: [#{msg.class_name}.#{msg.method_name}], Timeout: [#{msg.msg_timeout}], Priority: [#{msg.priority}], State: [#{msg.state}], Deliver On: [#{msg.deliver_on}], Data: [#{msg.data.nil? ? "" : "#{msg.data.length} bytes"}], Args: #{ManageIQ::Password.sanitize_string(msg.args.inspect)}"
   end
 
   def self.format_short_log_msg(msg)
@@ -563,6 +572,8 @@ class MiqQueue < ApplicationRecord
     )
   end
 
+  private_class_method :default_get_options
+
   # when searching miq_queue, we often want to see if a key is nil, or a particular value
   # given a set of keys, modify the params to have those values
   # example:
@@ -577,6 +588,8 @@ class MiqQueue < ApplicationRecord
     end
     options
   end
+
+  private_class_method :optional_values
 
   def destroy_potentially_stale_record
     destroy

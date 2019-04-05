@@ -32,9 +32,9 @@
   - ems_infra
   - ems_infra_admin_ui
   - ems_physical_infra
+  - event_streams
   - container_dashboard
   - ems_container
-  - ems_container_deployment
   - configuration_job
   - container_project
   - container_route
@@ -65,7 +65,7 @@
   - miq_report
   - miq_report_superadmin
   - miq_request
-  - miq_request_superadmin
+  - miq_request_approval
   - miq_template
   - orchestration_stack
   - physical_rack
@@ -206,6 +206,7 @@
   - ems_physical_infra_console
   - ems_physical_infra_tag
   - ems_physical_infra_view
+  - event_streams_view
   - host_show
   - host_show_list
   - host_perf
@@ -295,6 +296,7 @@
   - automation_manager
   - dashboard
   - ems_physical_infra
+  - event_streams
   - miq_request_admin
   - miq_request_view
   - miq_template_clone
@@ -380,7 +382,9 @@
   - ems_infra_delete
   - ems_infra_discover
   - ems_infra_edit
+  - ems_infra_pause
   - ems_infra_refresh
+  - ems_infra_resume
   - ems_infra_scale
   - ems_infra_show
   - ems_infra_show_list
@@ -394,6 +398,7 @@
   - ems_physical_infra_refresh
   - ems_physical_infra_tag
   - ems_physical_infra_view
+  - event_streams_view
   - physical_rack_control
   - physical_rack_view
   - physical_chassis_view
@@ -503,6 +508,7 @@
   - ems_infra_timeline
   - ems_physical_infra_tag
   - ems_physical_infra_view
+  - event_streams_view
   - physical_server_timeline
   - host_show
   - host_show_list
@@ -588,6 +594,7 @@
   - ems_physical_infra_console
   - ems_physical_infra_tag
   - ems_physical_infra_view
+  - event_streams_view
   - host_show
   - host_show_list
   - host_perf
@@ -678,6 +685,7 @@
   - ems_physical_infra_show_list
   - ems_physical_infra_tag
   - ems_physical_infra_timeline
+  - event_streams_view
   - host_show
   - host_show_list
   - host_perf
@@ -756,6 +764,7 @@
   - catalog_items_view
   - miq_request_admin
   - miq_request_view
+  - miq_task_my_ui
   - my_settings_default_views
   - my_settings_visuals
   - service_edit
@@ -802,6 +811,7 @@
   - embedded_automation_manager
   - ems_physical_infra_console
   - catalog_items_view
+  - miq_task_my_ui
   - miq_template_clone
   - miq_template_drift
   - miq_template_edit
@@ -863,6 +873,7 @@
   - all_vm_rules
   - automation_manager
   - embedded_automation_manager
+  - miq_task_my_ui
   - miq_request_admin
   - miq_request_view
   - miq_template_check_compliance
@@ -1187,6 +1198,7 @@
   - ems_physical_infra_view
   - ems_network_view
   - ems_object_storage_view
+  - event_streams_view
   - flavor_view
   - floating_ip_view
   - host_aggregate_view
@@ -1244,3 +1256,8 @@
   - sui_services_view
   - sui_orders_view
   - sui_notifications
+
+- :name: EvmRole-physical_infrastructure
+  :read_only: true
+  :miq_product_feature_identifiers:
+  - everything

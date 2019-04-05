@@ -1,9 +1,11 @@
 class ServiceAnsiblePlaybook < ServiceGeneric
+  include AnsibleExtraVarsMixin
+
   delegate :job_template, :to => :service_template, :allow_nil => true
 
   # A chance for taking options from automate script to override options from a service dialog
   def preprocess(action, add_options = {})
-    unless add_options.blank?
+    if add_options.present?
       _log.info("Override with new options:")
       $log.log_hashes(add_options)
     end
@@ -13,7 +15,12 @@ class ServiceAnsiblePlaybook < ServiceGeneric
 
   def execute(action)
     jt = job_template(action)
-    opts = get_job_options(action).deep_merge(:extra_vars => {'manageiq' => manageiq_extra_vars(action), 'manageiq_connection' => manageiq_connection_env})
+    opts = get_job_options(action).deep_merge(
+      :extra_vars => {
+        'manageiq'            => service_manageiq_env(action),
+        'manageiq_connection' => manageiq_connection_env(evm_owner)
+      }
+    )
     hosts = opts.delete(:hosts)
 
     _log.info("Launching Ansible Tower job with options:")
@@ -59,34 +66,18 @@ class ServiceAnsiblePlaybook < ServiceGeneric
     postprocess(action)
   end
 
+  def retain_resources_on_retirement?
+    options.fetch_path(:config_info, :retirement, :remove_resources).to_s.start_with?("no_")
+  end
+
   private
 
-  def manageiq_extra_vars(action)
+  def service_manageiq_env(action)
     {
-      'api_url'     => api_url,
-      'api_token'   => api_token,
-      'service'     => href_slug,
-      'user'        => evm_owner.href_slug,
-      'group'       => miq_group.href_slug,
-      'action'      => action,
-      'X_MIQ_Group' => evm_owner.current_group.description
-    }.merge(request_options_extra_vars)
-  end
-
-  def manageiq_connection_env
-    {
-      'url'         => api_url,
-      'token'       => api_token,
-      'X_MIQ_Group' => evm_owner.current_group.description
-    }
-  end
-
-  def api_token
-    @api_token ||= Api::UserTokenService.new.generate_token(evm_owner.userid, 'api')
-  end
-
-  def api_url
-    @api_url ||= MiqRegion.my_region.remote_ws_url
+      'service' => href_slug,
+      'action'  => action
+    }.merge(manageiq_env(evm_owner, miq_group, miq_request_task))
+      .merge(request_options_extra_vars)
   end
 
   def request_options_extra_vars
@@ -105,10 +96,10 @@ class ServiceAnsiblePlaybook < ServiceGeneric
     job_options.deep_merge!(parse_dialog_options) unless action == ResourceAction::RETIREMENT
     job_options.deep_merge!(overrides)
 
-    %i(credential vault_credential).each do |cred|
+    %i[credential vault_credential].each do |cred|
       cred_sym = "#{cred}_id".to_sym
       credential_id = job_options.delete(cred_sym)
-      job_options[cred] = Authentication.find(credential_id).manager_ref if credential_id.present?
+      job_options[cred] = Authentication.find(credential_id).native_ref if credential_id.present?
     end
 
     hosts = job_options[:hosts]
@@ -181,7 +172,7 @@ class ServiceAnsiblePlaybook < ServiceGeneric
 
   def decrypt_options(opts)
     opts.tap do
-      opts[:extra_vars].transform_values! { |val| val.kind_of?(String) ? MiqPassword.try_decrypt(val) : val }
+      opts[:extra_vars].transform_values! { |val| val.kind_of?(String) ? ManageIQ::Password.try_decrypt(val) : val }
     end
   end
 

@@ -1,7 +1,7 @@
 module MiqServer::RoleManagement
   extend ActiveSupport::Concern
 
-  ROLES_NEEDING_APACHE = %w(user_interface web_services websocket embedded_ansible cockpit_ws).freeze
+  ROLES_NEEDING_APACHE = %w(user_interface web_services remote_console embedded_ansible cockpit_ws).freeze
 
   included do
     has_many :assigned_server_roles, :dependent => :destroy
@@ -14,15 +14,21 @@ module MiqServer::RoleManagement
     before_save    :check_server_roles
   end
 
-  def log_role_changes
-    _log.info("Server's roles have changed:")
+  def role_changes
     o = @active_role_names
     n = active_role_names
     adds      = (n - o)
     deletes   = (o - n)
     unchanged = (o & n)
-    _log.info("  Old roles:       #{o.inspect}")
-    _log.info("  New roles:       #{n.inspect}")
+
+    return adds, deletes, unchanged
+  end
+
+  def log_role_changes
+    _log.info("Server's roles have changed:")
+    adds, deletes, unchanged = role_changes
+    _log.info("  Old roles:       #{@active_role_names.inspect}")
+    _log.info("  New roles:       #{active_role_names.inspect}")
     _log.info("  Roles removed:   #{deletes.inspect}")
     _log.info("  Roles added:     #{adds.inspect}")
     _log.info("  Roles unchanged: #{unchanged.inspect}")
@@ -43,10 +49,10 @@ module MiqServer::RoleManagement
   end
 
   def set_active_role_flags
-    self.has_active_userinterface = self.has_active_role?("user_interface")
-    self.has_active_websocket     = self.has_active_role?("websocket")
-    self.has_active_webservices   = self.has_active_role?("web_services")
-    self.has_active_cockpit_ws    = self.has_active_role?("cockpit_ws")
+    self.has_active_userinterface  = self.has_active_role?("user_interface")
+    self.has_active_remote_console = self.has_active_role?("remote_console")
+    self.has_active_webservices    = self.has_active_role?("web_services")
+    self.has_active_cockpit_ws     = self.has_active_role?("cockpit_ws")
     save
   end
 

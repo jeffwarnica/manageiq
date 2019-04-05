@@ -45,8 +45,8 @@ describe TaskHelpers::Imports::Tags do
       let(:source) { "#{data_dir}/#{tag_file2}" }
 
       it 'updates attributes' do
-        parent = FactoryGirl.create(:classification, :name => "location", :description => "Location", :single_value => 1, :default => 1)
-        FactoryGirl.create(:classification_tag,      :name => "london",   :description => "London",   :parent => parent)
+        parent = FactoryBot.create(:classification, :name => "location", :description => "Location", :single_value => 1, :default => 1)
+        FactoryBot.create(:classification_tag,      :name => "london",   :description => "London",   :parent => parent)
 
         expect do
           TaskHelpers::Imports::Tags.new.import(options)
@@ -111,7 +111,7 @@ describe TaskHelpers::Imports::Tags do
   end
 
   def assert_test_tag_category_count
-    tag_cats = Classification.where(:parent_id => 0)
+    tag_cats = Classification.is_category
     expect(tag_cats.count).to eq(2)
   end
 end

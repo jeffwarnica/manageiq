@@ -1,10 +1,10 @@
 describe Classification do
   context ".hash_all_by_type_and_name" do
     it "with entries duped across categories should return both entries" do
-      clergy        = FactoryGirl.create(:classification,     :name => "clergy", :single_value => 1)
-      clergy_bishop = FactoryGirl.create(:classification_tag, :name => "bishop", :parent => clergy)
-      chess         = FactoryGirl.create(:classification,     :name => "chess",  :single_value => 1)
-      chess_bishop  = FactoryGirl.create(:classification_tag, :name => "bishop", :parent => chess)
+      clergy        = FactoryBot.create(:classification,     :name => "clergy", :single_value => 1)
+      clergy_bishop = FactoryBot.create(:classification_tag, :name => "bishop", :parent => clergy)
+      chess         = FactoryBot.create(:classification,     :name => "chess",  :single_value => 1)
+      chess_bishop  = FactoryBot.create(:classification_tag, :name => "bishop", :parent => chess)
 
       expect(Classification.hash_all_by_type_and_name).to include(
         "clergy" => {
@@ -20,45 +20,45 @@ describe Classification do
   end
 
   context "enforce_policy" do
-    let(:tag) { FactoryGirl.build(:classification_tag, :parent => FactoryGirl.build(:classification)) }
+    let(:tag) { FactoryBot.build(:classification_tag, :parent => FactoryBot.build(:classification)) }
 
     it "enforce_policy on sub-classed vm" do
       allow(MiqEvent).to receive(:raise_evm_event).and_return(true)
 
-      vm = FactoryGirl.build(:vm_vmware, :name => "VM1")
+      vm = FactoryBot.build(:vm_vmware, :name => "VM1")
       tag.enforce_policy(vm, "fake_event")
     end
 
     it "enforce_policy on sub-classed host" do
       allow(MiqEvent).to receive(:raise_evm_event).and_return(true)
 
-      host = FactoryGirl.build(:host_vmware_esx)
+      host = FactoryBot.build(:host_vmware_esx)
       tag.enforce_policy(host, "fake_event")
     end
   end
 
   context "with hierarchy" do
-    let(:host1) { FactoryGirl.create(:host, :name => "HOST1") }
-    let(:host2) { FactoryGirl.create(:host, :name => "HOST2") }
+    let(:host1) { FactoryBot.create(:host, :name => "HOST1") }
+    let(:host2) { FactoryBot.create(:host, :name => "HOST2") }
     let(:host3) do
-      FactoryGirl.create(:host, :name => "HOST3").tap do |host|
+      FactoryBot.create(:host, :name => "HOST3").tap do |host|
         Classification.find_by_name("test_category").entries.each { |ent| ent.assign_entry_to(host) }
       end
     end
-    let(:sti_inst) { FactoryGirl.create(:template_vmware) }
+    let(:sti_inst) { FactoryBot.create(:template_vmware) }
 
     before do
-      parent = FactoryGirl.create(:classification, :name => "test_category")
-      FactoryGirl.create(:classification_tag,      :name => "test_entry",         :parent => parent)
-      FactoryGirl.create(:classification_tag,      :name => "another_test_entry", :parent => parent)
+      parent = FactoryBot.create(:classification, :name => "test_category")
+      FactoryBot.create(:classification_tag,      :name => "test_entry",         :parent => parent)
+      FactoryBot.create(:classification_tag,      :name => "another_test_entry", :parent => parent)
 
-      parent = FactoryGirl.create(:classification, :name => "test_single_value_category", :single_value => 1)
-      FactoryGirl.create(:classification_tag,      :name => "single_entry_1", :parent => parent)
-      FactoryGirl.create(:classification_tag,      :name => "single_entry_2", :parent => parent)
+      parent = FactoryBot.create(:classification, :name => "test_single_value_category", :single_value => 1)
+      FactoryBot.create(:classification_tag,      :name => "single_entry_1", :parent => parent)
+      FactoryBot.create(:classification_tag,      :name => "single_entry_2", :parent => parent)
 
-      parent = FactoryGirl.create(:classification, :name => "test_multi_value_category", :single_value => 0)
-      FactoryGirl.create(:classification_tag,      :name => "multi_entry_1", :parent => parent)
-      FactoryGirl.create(:classification_tag,      :name => "multi_entry_2", :parent => parent)
+      parent = FactoryBot.create(:classification, :name => "test_multi_value_category", :single_value => 0)
+      FactoryBot.create(:classification_tag,      :name => "multi_entry_1", :parent => parent)
+      FactoryBot.create(:classification_tag,      :name => "multi_entry_2", :parent => parent)
     end
 
     context "#destroy" do
@@ -122,7 +122,7 @@ describe Classification do
 
     it "should test add entry" do
       cat = Classification.find_by_name("test_category")
-      ent = FactoryGirl.create(:classification_tag, :name => "test_add_entry", :parent => cat)
+      ent = FactoryBot.create(:classification_tag, :name => "test_add_entry", :parent => cat)
 
       expect(ent).to be_valid
       expect(cat.id.to_i).to eq(ent.parent_id)
@@ -146,7 +146,7 @@ describe Classification do
 
     it "should test create duplicate category" do
       expect do
-        FactoryGirl.create(:classification, :name => "test_category")
+        FactoryBot.create(:classification, :name => "test_category")
       end.to raise_error(ActiveRecord::RecordInvalid)
     end
 
@@ -160,11 +160,11 @@ describe Classification do
 
     it "should test add duplicate entry" do
       cat = Classification.find_by_name("test_category")
-      ent = FactoryGirl.create(:classification_tag, :name => "test_add_dup_entry", :parent => cat)
+      ent = FactoryBot.create(:classification_tag, :name => "test_add_dup_entry", :parent => cat)
 
       expect(ent).to be_valid
       expect do
-        FactoryGirl.create(:classification_tag, :name => "test_add_dup_entry", :parent => cat)
+        FactoryBot.create(:classification_tag, :name => "test_add_dup_entry", :parent => cat)
       end.to raise_error(ActiveRecord::RecordInvalid)
     end
 
@@ -192,7 +192,7 @@ describe Classification do
        'My_Name_is...',
        '123456789_123456789_123456789_123456789_123456789_1'
       ].each do |name|
-        cat = Classification.new(:name => name, :parent_id => 0)
+        cat = Classification.is_category.new(:name => name)
 
         expect(cat).to_not be_valid
         expect(cat.errors[:name].size).to eq(1)
@@ -206,7 +206,7 @@ describe Classification do
        '123456789_123456789_123456789_123456789_123456789_1'
       ].each do |name|
         good_name = Classification.sanitize_name(name)
-        cat = Classification.new(:name => good_name, :description => name, :parent_id => 0)
+        cat = Classification.is_category.new(:name => good_name, :description => name)
         expect(cat).to be_valid
       end
     end
@@ -434,7 +434,7 @@ describe Classification do
       end
 
       it "does not re-seed deleted tags" do
-        Classification.where("parent_id != 0").destroy_all
+        Classification.is_entry.destroy_all
         expect(Classification.count).to eq(1)
 
         Classification.seed
@@ -445,7 +445,7 @@ describe Classification do
         # If categories' names are edited they auto-save a different associated tag
         # This tests that if seeding category and it's invalid (due to uniqueness constraints)
         # then seeding still doesn't fail.
-        cat = Classification.find_by!(:description => "Cost Center", :parent_id => 0)
+        cat = Classification.is_category.find_by!(:description => "Cost Center")
         allow(YAML).to receive(:load_file).and_call_original
         cat.update_attributes!(:name => "new_name")
         expect {
@@ -455,7 +455,7 @@ describe Classification do
     end
 
     it "does not re-seed existing categories" do
-      category = FactoryGirl.create(:classification_cost_center,
+      category = FactoryBot.create(:classification_cost_center,
                                     :description  => "user defined",
                                     :example_text => "user defined",
                                     :show         => false,
@@ -475,11 +475,11 @@ describe Classification do
     let(:other_region_id) { other_region * Classification.rails_sequence_factor + 1 }
 
     before do
-      @local = FactoryGirl.create(:classification, :name => "test_category1")
-      FactoryGirl.create(:classification, :name => "test_category3")
+      @local = FactoryBot.create(:classification, :name => "test_category1")
+      FactoryBot.create(:classification, :name => "test_category3")
 
-      FactoryGirl.create(:tag, :name => "/managed/test_category2", :id => other_region_id)
-      @remote = FactoryGirl.create(:classification, :name => "test_category2", :id => other_region_id)
+      FactoryBot.create(:tag, :name => "/managed/test_category2", :id => other_region_id)
+      @remote = FactoryBot.create(:classification, :name => "test_category2", :id => other_region_id)
     end
 
     it "created classification in other region" do
@@ -518,10 +518,10 @@ describe Classification do
     let(:other_region_id) { other_region * Classification.rails_sequence_factor + 1 }
 
     before do
-      @local = FactoryGirl.create(:classification, :name => "test_category1")
-      FactoryGirl.create(:tag, :name => Classification.name2tag("test_category2"), :id => other_region_id)
-      @remote = FactoryGirl.create(:classification, :name => "test_category2", :id => other_region_id)
-      FactoryGirl.create(:classification, :name => "test_category3")
+      @local = FactoryBot.create(:classification, :name => "test_category1")
+      FactoryBot.create(:tag, :name => Classification.name2tag("test_category2"), :id => other_region_id)
+      @remote = FactoryBot.create(:classification, :name => "test_category2", :id => other_region_id)
+      FactoryBot.create(:classification, :name => "test_category3")
     end
 
     it "finds in region" do
@@ -536,6 +536,73 @@ describe Classification do
     it "finds in my region" do
       Classification.find_by_name(%w(test_category1 test_category2))
       expect(Classification.find_by_names(%w(test_category1 test_category2))).to eq([@local])
+    end
+  end
+
+  describe "name2tag" do
+    let(:root_ns)   { "/managed" }
+    let(:parent_ns) { "/managed/test_category" }
+    let(:entry_ns)  { "/managed/test_category/test_entry" }
+    let(:parent) { FactoryBot.create(:classification, :name => "test_category") }
+
+    it "creates parent tag" do
+      expect(Classification.name2tag("test_category")).to eq(parent_ns)
+    end
+
+    it "creates tag with name and ns" do
+      expect(Classification.name2tag("test_entry", 0, parent_ns)).to eq(entry_ns)
+      expect(Classification.name2tag("test_category", 0, root_ns)).to eq(parent_ns)
+    end
+
+    it "creates tag with name, ns, and parent_id" do
+      expect(Classification.name2tag("test_entry", parent.id, root_ns)).to eq(entry_ns)
+    end
+
+    it "creates tag with name, ns and parent" do
+      expect(Classification.name2tag("test_entry", parent, root_ns)).to eq(entry_ns)
+    end
+  end
+
+  describe '.create_category!' do
+    it "is a category" do
+      c1 = Classification.create_category!(:name => 'a', :description => 'a')
+
+      expect(c1).to be_category
+    end
+  end
+
+  describe '#save' do
+    let(:new_name) { "new_tag_name" }
+    let(:category) { FactoryBot.create(:classification, :name => "category") }
+
+    context "editing existing classification" do
+      let(:classification) { FactoryBot.create(:classification_tag, :parent => category, :name => "some_tag_name") }
+      it "doesn't assign new tag " do
+        tag = classification.tag
+        classification.update_attributes!(:name => new_name)
+        classification.reload
+        expect(tag.id).to eq classification.tag.id
+        expect(classification.name).to eq(new_name)
+        expect(classification.tag.name).to eq(Classification.name2tag(new_name, category))
+      end
+    end
+
+    context "saving new classification" do
+      it "creates new tag" do
+        classification = Classification.create(:description => new_name, :parent => category, :name => new_name)
+        expect(classification.tag).to be_present
+        expect(classification.name).to eq(new_name)
+        expect(classification.tag.name).to eq(Classification.name2tag(new_name, category))
+      end
+    end
+  end
+
+  describe '.create' do
+    it "assigns proper tags" do
+      FactoryBot.create(:classification_department_with_tags)
+      Tag.all.each do |tag|
+        expect(tag.name).to eq(Classification.name2tag(tag.classification.name, tag.classification.parent_id))
+      end
     end
   end
 

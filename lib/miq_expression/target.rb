@@ -9,11 +9,16 @@ class MiqExpression::Target
   # returns hash:
   # {:model_name => Host<ApplicationRecord> , :associations => ['vms']<Array>, :column_name => 'host_name' <String>}
   def self.parse_params(field)
+    return unless field.kind_of?(String)
     match = self::REGEX.match(field) || return
     # convert matches to hash to format
     # {:model_name => 'User', :associations => ...}
     parsed_params = Hash[match.names.map(&:to_sym).zip(match.to_a[1..-1])]
-    parsed_params[:model_name] = parsed_params[:model_name].classify.safe_constantize
+    begin
+      parsed_params[:model_name] = parsed_params[:model_name].classify.safe_constantize
+    rescue LoadError # issues for case sensitivity (e.g.: VM vs vm)
+      parsed_params[:model_name] = nil
+    end
     parsed_params[:associations] = parsed_params[:associations].to_s.split(".")
     parsed_params
   end
@@ -39,8 +44,12 @@ class MiqExpression::Target
     column_type == :string
   end
 
+  def decimal?
+    column_type == :decimal
+  end
+
   def numeric?
-    [:fixnum, :integer, :float].include?(column_type)
+    %i(fixnum integer decimal float).include?(column_type)
   end
 
   def plural?
@@ -49,7 +58,7 @@ class MiqExpression::Target
   end
 
   def reflection_supported_by_sql?
-    model.follow_associations(associations).present?
+    model&.follow_associations(associations).present?
   end
 
   # AR or virtual reflections
@@ -64,6 +73,12 @@ class MiqExpression::Target
       raise(ArgumentError, "One or more associations are invalid: #{associations.join(", ")}")
   end
 
+  def includes
+    ret = {}
+    model && collect_reflections.map(&:name).inject(ret) { |a, p| a[p] ||= {} }
+    ret
+  end
+
   def target
     if associations.none?
       model
@@ -75,6 +90,16 @@ class MiqExpression::Target
   def tag_path_with(value = nil)
     # encode embedded / characters in values since / is used as a tag seperator
     "#{tag_path}#{value.nil? ? '' : '/' + value.to_s.gsub(/\//, "%2f")}"
+  end
+
+  def exclude_col_by_preprocess_options?(options)
+    if options.kind_of?(Hash) && options[:vim_performance_daily_adhoc]
+      Metric::Rollup.excluded_col_for_expression?(column.to_sym)
+    elsif target == Service
+      Service::AGGREGATE_ALL_VM_ATTRS.include?(column.to_sym)
+    else
+      false
+    end
   end
 
   private

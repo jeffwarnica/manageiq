@@ -1,6 +1,26 @@
 class CustomButtonSet < ApplicationRecord
   acts_as_miq_set
 
+  before_save :validate_children
+  after_save :update_children
+
+  def validate_children
+    return if set_data.try(:[], :button_order).nil?
+
+    children = Rbac.filtered(CustomButton.where(:id => set_data[:button_order]))
+    throw(:abort) if children.pluck(:id).sort != set_data[:button_order].sort
+  end
+
+  def update_children
+    if set_data.try(:[], :button_order).nil?
+      remove_all_children
+      return
+    end
+
+    children = Rbac.filtered(CustomButton.where(:id => set_data[:button_order]))
+    replace_children(children)
+  end
+
   def self.find_all_by_class_name(class_name, class_id = nil)
     ordering = ->(o) { [o.set_data[:group_index].to_s, o.name] }
 
@@ -56,7 +76,7 @@ class CustomButtonSet < ApplicationRecord
   #  - filtered custom_button_sets array when all visibilty expression custom buttons have been evaluated to false
   def self.filter_with_visibility_expression(custom_button_sets, object)
     custom_button_sets.each_with_object([]) do |custom_button_set, ret|
-      custom_button_from_set = CustomButton.where(:id => custom_button_set.custom_buttons.pluck(:id)).select(:id, :visibility_expression)
+      custom_button_from_set = CustomButton.where(:id => custom_button_set.custom_buttons.pluck(:id)).select(:id, :visibility_expression).with_array_order(custom_button_set.set_data[:button_order])
       filtered_ids = custom_button_from_set.select { |x| x.evaluate_visibility_expression_for(object) }.pluck(:id)
       if filtered_ids.present?
         custom_button_set.set_data[:button_order] = filtered_ids

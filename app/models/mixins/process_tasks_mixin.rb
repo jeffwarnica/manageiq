@@ -1,3 +1,5 @@
+require 'manageiq-api-client'
+
 module ProcessTasksMixin
   extend ActiveSupport::Concern
   include RetirementMixin
@@ -7,7 +9,7 @@ module ProcessTasksMixin
     def process_tasks(options)
       raise _("No ids given to process_tasks") if options[:ids].blank?
       if options[:task] == 'retire_now'
-        name.constantize.make_retire_request(*options[:ids])
+        name.constantize.make_retire_request(*options[:ids], User.current_user)
       elsif options[:task] == "refresh_ems" && respond_to?("refresh_ems")
         refresh_ems(options[:ids])
         msg = "'#{options[:task]}' initiated for #{options[:ids].length} #{ui_lookup(:table => base_class.name).pluralize}"
@@ -94,9 +96,6 @@ module ProcessTasksMixin
           MiqQueue.submit_job(q_hash)
           next
         end
-
-        msg = "'#{options[:task]}' successfully initiated for remote VMs: #{ids.sort.inspect}"
-        task_audit_event(:success, options, :message => msg)
       end
     end
 
@@ -114,20 +113,37 @@ module ProcessTasksMixin
 
       collection   = api_client.send(collection_name)
       action       = action_for_task(remote_options[:task])
-      post_args    = remote_options[:args] || {}
       resource_ids = remote_options[:ids]
 
       if resource_ids.present?
         resource_ids.each do |id|
-          obj = collection.find(id)
-          _log.info("Invoking task #{action} on collection #{collection_name}, object #{obj.id}, with args #{post_args}")
-          obj.send(action, post_args)
+          send_action(action, collection_name, collection, remote_options, id)
         end
       else
-        _log.info("Invoking task #{action} on collection #{collection_name}, with args #{post_args}")
-        collection.send(action, post_args)
+        send_action(action, collection_name, collection, remote_options)
       end
     end
+
+    def send_action(action, collection_name, collection, remote_options, id = nil)
+      post_args = remote_options[:args] || {}
+      begin
+        if id.present?
+          msg_desination = "remote object: #{id} for collection #{collection_name},  with args #{post_args}"
+          destination = collection.find(id)
+        else
+          msg_desination = "remote collection #{collection_name}, with args #{post_args}"
+          destination = collection
+        end
+        _log.info("Invoking task #{action} on #{msg_desination}")
+        destination.send(action, post_args)
+        task_audit_event(:success, remote_options, :message => "'#{action}' successfully initiated on #{msg_desination}")
+      rescue StandardError => err
+        task_audit_event(:failure, remote_options, :message => "'#{action}' failed to be initiated on #{msg_desination}")
+        _log.error(err.message)
+        raise err unless err.kind_of?(NoMethodError) || err.kind_of?(ManageIQ::API::Client::ResourceNotFound)
+      end
+    end
+    private :send_action
 
     # default: invoked by task, can be overridden
     def task_invoked_by(_options)
@@ -155,6 +171,7 @@ module ProcessTasksMixin
         :instance_id  => instance.id,
         :method_name  => options[:task],
         :args         => args,
+        :miq_task_id  => task&.id,
         :miq_callback => cb
       }
       user = User.current_user

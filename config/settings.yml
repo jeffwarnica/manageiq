@@ -96,6 +96,7 @@
     - BinaryBlobPart
     - CustomizationSpec
     - EventLog
+    - EventStream
     - FirewallRule
     - Host
     - Job
@@ -158,8 +159,14 @@
   :debug_trace: false
   :capture_vm_created_on_date: false
   :ansible_tower_automation:
+    :inventory_object_refresh: true
+    :allow_targeted_refresh: true
     :refresh_interval: 15.minutes
   :embedded_ansible_automation:
+    :inventory_object_refresh: true
+    :allow_targeted_refresh: true
+    :inventory_collections:
+      :saver_strategy: batch
     :refresh_interval: 15.minutes
   :foreman_configuration:
     :refresh_interval: 15.minutes
@@ -220,6 +227,7 @@
       - VmCreatedEvent
       - VmDeployedEvent
       - VmRegisteredEvent
+      - VmClonedEvent
       :detail:
       - CloneVM_Task
       - CloneVM_Task_Complete
@@ -923,7 +931,7 @@
   :level_scvmm: info
   :level_vcloud: info
   :level_vim: warn
-  :level_websocket: info
+  :level_remote_console: info
 :notifications:
   :history:
     :purge_window_size: 1000
@@ -974,8 +982,10 @@
     :keep_archived_quotas: 6.months
     :purge_window_size: 1000
 :product:
+  :name:
   :maindb: ExtManagementSystem
-  :container_deployment_wizard: false
+  :run_automate_methods_on_service_api_submit: false
+  :allow_api_service_ordering: true
 :prototype:
   :queue_type: miq_queue
   :artemis:
@@ -1001,7 +1011,10 @@
   :console_proxy_port:
     :start: 6000
     :end: 7000
+  :custom_brand: false
+  :custom_login_logo: false
   :custom_logo: false
+  :custom_favicon: false
   :events:
     :disk_usage_gt_percent: 80
   :heartbeat_timeout: 2.minutes
@@ -1019,7 +1032,7 @@
   :prefetch_stale_threshold: 30.seconds
   :rails_server: puma
   :remote_console_type: VMRC
-  :role: database_operations,event,reporting,scheduler,smartstate,ems_operations,ems_inventory,user_interface,websocket,web_services,automate
+  :role: database_operations,event,reporting,scheduler,smartstate,ems_operations,ems_inventory,user_interface,remote_console,web_services,automate
   :server_dequeue_frequency: 5.seconds
   :server_log_frequency: 5.minutes
   :server_log_timings_threshold: 1.second
@@ -1090,6 +1103,18 @@
   :watchdog_interval: 1.minute
 :task:
   :active_task_timeout: 6.hours
+  :history:
+    :keep_tasks: 1.week
+    :purge_window_size: 1000
+:transformation:
+  :limits:
+    :max_concurrent_tasks_per_ems: 10
+    :max_concurrent_tasks_per_host: 10
+    :cpu_limit_per_host: unlimited
+    :network_limit_per_host: unlimited
+    :conversion_polling_interval: 15 # in seconds
+    :poll_conversion_max: 86400 # i.e. default 24 hours (15s per-interval)
+    :poll_post_stage_max: 25200 # i.e. default 7 hours (15s per-interval)
 :ui:
   :mark_translated_strings: false
   :url:
@@ -1128,6 +1153,7 @@
       :starting_timeout: 20.minutes
       :poll: 10.seconds
       :memory_threshold: 0.megabytes
+      :sync_provider_with_server_interval: 1.minute
     :agent_coordinator_worker:
       :heartbeat_timeout: 30.minutes
       :poll: 30.seconds
@@ -1252,6 +1278,7 @@
       :session_timeout_interval: 30.seconds
       :storage_file_collection_interval: 1.days
       :storage_file_collection_time_utc: 21600
+      :task_purge_interval: 1.day
       :task_timeout_check_frequency: 1.hour
       :vim_performance_states_purge_interval: 1.day
       :vm_retired_interval: 10.minutes
@@ -1273,7 +1300,7 @@
       :connection_pool_size: 8
       :memory_threshold: 1.gigabytes
       :nice_delta: 1
-    :websocket_worker:
+    :remote_console_worker:
       :connection_pool_size: 14
       :memory_threshold: 1.gigabytes
       :nice_delta: 1

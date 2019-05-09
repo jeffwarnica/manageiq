@@ -34,6 +34,7 @@ module Rbac
       FloatingIp
       Host
       HostAggregate
+      Lan
       LoadBalancer
       MiddlewareDatasource
       MiddlewareDeployment
@@ -68,6 +69,18 @@ module Rbac
     ).freeze
 
     BELONGSTO_FILTER_CLASSES = %w(
+      Container
+      ContainerBuild
+      ContainerGroup
+      ContainerImage
+      ContainerImageRegistry
+      ContainerNode
+      ContainerProject
+      ContainerReplicator
+      ContainerRoute
+      ContainerService
+      ContainerTemplate
+      ContainerVolume
       EmsCluster
       EmsFolder
       ExtManagementSystem
@@ -125,6 +138,8 @@ module Rbac
       OwnershipMixin
       MiqRequest
     ).freeze
+
+    ADDITIONAL_TENANT_CLASSES = %w[ServiceTemplate].freeze
 
     include Vmdb::Logging
 
@@ -540,6 +555,18 @@ module Rbac
       scope.find_tags_by_grouping(filter, :ns => '*').reorder(nil)
     end
 
+    def scope_to_additional_tenants(scope, user, miq_group)
+      user_or_group = user || miq_group
+
+      tenant = user_or_group.try(:current_tenant)
+
+      if tenant && !tenant.root?
+        scope.additional_tenants_clause(tenant)
+      else
+        scope
+      end
+    end
+
     def scope_to_tenant(scope, user, miq_group)
       klass = scope.respond_to?(:klass) ? scope.klass : scope
       user_or_group = user || miq_group
@@ -576,6 +603,10 @@ module Rbac
       end
     end
 
+    def scope_to_additional_tenants?(klass)
+      ADDITIONAL_TENANT_CLASSES.include?(safe_base_class(klass).name)
+    end
+
     ##
     # Main scoping method
     #
@@ -584,7 +615,16 @@ module Rbac
       # with a few manual exceptions (User, Tenant). Note that the classes in
       # TENANT_ACCESS_STRATEGY are a consolidated list of them.
       if klass.respond_to?(:scope_by_tenant?) && klass.scope_by_tenant?
-        scope = scope_to_tenant(scope, user, miq_group)
+        scope = scope.with_additional_tenants if scope_to_additional_tenants?(klass) # for eager load
+
+        tenant_scope = scope_to_tenant(scope, user, miq_group)
+
+        scope = if scope_to_additional_tenants?(klass)
+                  tenant_scope.or(scope_to_additional_tenants(scope, user, miq_group))
+                else
+                  tenant_scope
+                end
+
       elsif klass.respond_to?(:scope_by_cloud_tenant?) && klass.scope_by_cloud_tenant?
         scope = scope_to_cloud_tenant(scope, user, miq_group)
       end
@@ -714,13 +754,43 @@ module Rbac
         # typically, this is the only one we want:
         vcmeta = vcmeta_list.last
 
-        if ([ExtManagementSystem, Host].any? { |x| vcmeta.kind_of?(x) } && klass <= VmOrTemplate) ||
-           (vcmeta.kind_of?(ManageIQ::Providers::NetworkManager)        && NETWORK_MODELS_FOR_BELONGSTO_FILTER.any? { |association_class| klass <= association_class.safe_constantize })
+        if belongsto_association_filtered?(vcmeta, klass)
           vcmeta.send(association_name).to_a
         else
           vcmeta_list.grep(klass) + vcmeta.descendants.grep(klass)
         end
       end.uniq
+    end
+
+    def belongsto_association_filtered?(vcmeta, klass)
+      if [ExtManagementSystem, Host].any? { |x| vcmeta.kind_of?(x) }
+        # Eject early if true
+        return true if associated_belongsto_models.any? { |associated| klass <= associated }
+      end
+
+      if vcmeta.kind_of?(ManageIQ::Providers::NetworkManager)
+        NETWORK_MODELS_FOR_BELONGSTO_FILTER.any? do |association_class|
+          klass <= association_class.safe_constantize
+        end
+      end
+    end
+
+    def associated_belongsto_models
+      [
+        VmOrTemplate,
+        Container,
+        ContainerBuild,
+        ContainerGroup,
+        ContainerImage,
+        ContainerImageRegistry,
+        ContainerNode,
+        ContainerProject,
+        ContainerReplicator,
+        ContainerRoute,
+        ContainerService,
+        ContainerTemplate,
+        ContainerVolume
+      ]
     end
 
     def get_belongsto_matches_for_host(blist)

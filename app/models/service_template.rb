@@ -56,6 +56,9 @@ class ServiceTemplate < ApplicationRecord
   has_many   :service_templates, :through => :service_resources, :source => :resource, :source_type => 'ServiceTemplate'
   has_many   :services
 
+  has_many :service_template_tenants, :dependent => :destroy
+  has_many :additional_tenants, :through => :service_template_tenants, :source => :tenant, :dependent => :destroy
+
   has_one :picture, :dependent => :destroy, :as => :resource, :autosave => true
 
   belongs_to :service_template_catalog
@@ -84,6 +87,10 @@ class ServiceTemplate < ApplicationRecord
   scope :with_existent_service_template_catalog_id, ->         { where.not(:service_template_catalog_id => nil) }
   scope :displayed,                                 ->         { where(:display => true) }
   scope :public_service_templates,                  ->         { where(:internal => [false, nil]) }
+
+  def self.with_additional_tenants
+    includes(:service_template_tenants => :tenant)
+  end
 
   def self.catalog_item_types
     ci_types = Set.new(Rbac.filtered(ExtManagementSystem.all).flat_map(&:supported_catalog_types))
@@ -202,7 +209,7 @@ class ServiceTemplate < ApplicationRecord
 
     nh['initiator'] = service_task.options[:initiator] if service_task.options[:initiator]
 
-    service = Service.create(nh) do |svc|
+    service = Service.create!(nh) do |svc|
       svc.service_template = self
       set_ownership(svc, service_task.get_user)
 
@@ -381,7 +388,7 @@ class ServiceTemplate < ApplicationRecord
   end
 
   def self.create_from_options(options)
-    create(options.except(:config_info).merge(:options => { :config_info => options[:config_info] }))
+    create!(options.except(:config_info).merge(:options => { :config_info => options[:config_info] }))
   end
   private_class_method :create_from_options
 
@@ -390,6 +397,16 @@ class ServiceTemplate < ApplicationRecord
     result = order(user, options, request_options)
     raise result[:errors].join(", ") if result[:errors].any?
     result[:request]
+  end
+
+  def picture=(value)
+    if value
+      if value.kind_of?(Hash)
+        super(create_picture(value))
+      else
+        super
+      end
+    end
   end
 
   def queue_order(user_id, options, request_options)

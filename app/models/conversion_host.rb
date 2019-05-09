@@ -21,7 +21,7 @@ class ConversionHost < ApplicationRecord
     :uniqueness => true,
     :format     => { :with => Resolv::AddressRegex },
     :inclusion  => { :in => ->(conversion_host) { conversion_host.resource.ipaddresses } },
-    :unless     => ->(conversion_host) { conversion_host.resource.blank? || conversion_host.resource.ipaddresses.blank? },
+    :unless     => ->(conversion_host) { conversion_host.address.blank? || conversion_host.resource.blank? || conversion_host.resource.ipaddresses.blank? },
     :presence   => false
 
   validate :resource_supports_conversion_host
@@ -130,6 +130,27 @@ class ConversionHost < ApplicationRecord
     resource.ipaddresses.detect { |ip| IPAddr.new(ip).send("#{family}?") }
   end
 
+  # Write the limits calculated by InfraConversionThrottler to a specific task.
+  #
+  # @param [String] path The path of the throttling file for the task
+  # @param [Hash] limits The limits to apply, accordingly to virt-v2v-wrapper documentation
+  #
+  # @return [Integer] length of data written to file
+  #
+  # @raise [MiqException::MiqInvalidCredentialsError] if conversion host credentials are invalid
+  # @raise [MiqException::MiqSshUtilHostKeyMismatch] if conversion host key has changed
+  # @raise [JSON::GeneratorError] if limits hash can't be converted to JSON
+  # @raise [StandardError] if any other problem happens
+  def apply_task_limits(path, limits = {})
+    connect_ssh { |ssu| ssu.put_file(path, limits.to_json) }
+  rescue MiqException::MiqInvalidCredentialsError, MiqException::MiqSshUtilHostKeyMismatch => err
+    raise "Failed to connect and apply limits in file '#{path}' with [#{err.class}: #{err}"
+  rescue JSON::GeneratorError => err
+    raise "Could not generate JSON from limits '#{limits}' with [#{err.class}: #{err}]"
+  rescue StandardError => err
+    raise "Could not apply the limits in '#{path}' on '#{resource.name}' with [#{err.class}: #{err}]"
+  end
+
   def run_conversion(conversion_options)
     result = connect_ssh { |ssu| ssu.shell_exec('/usr/bin/virt-v2v-wrapper.py', nil, nil, conversion_options.to_json) }
     JSON.parse(result)
@@ -169,34 +190,43 @@ class ConversionHost < ApplicationRecord
     raise "Could not get conversion log '#{path}' from '#{resource.name}' with [#{e.class}: #{e}"
   end
 
-  def check_conversion_host_role
-    playbook = "/usr/share/ovirt-ansible-v2v-conversion-host/playbooks/conversion_host_check.yml"
-    ansible_playbook(playbook)
+  def check_conversion_host_role(miq_task_id = nil)
+    playbook = "/usr/share/v2v-conversion-host-ansible/playbooks/conversion_host_check.yml"
+    extra_vars = {
+      :v2v_host_type        => resource.ext_management_system.emstype,
+      :v2v_transport_method => source_transport_method
+    }
+    ansible_playbook(playbook, extra_vars, miq_task_id)
     tag_resource_as('enabled')
   rescue
     tag_resource_as('disabled')
   end
 
-  def enable_conversion_host_role(vmware_vddk_package_url = nil, vmware_ssh_private_key = nil)
-    raise "vddk_package_url is mandatory if transformation method is vddk" if vddk_transport_supported && vmware_vddk_package_url.nil?
-    raise "ssh_private_key is mandatory if transformation_method is ssh" if ssh_transport_supported && vmware_ssh_private_key.nil?
-    playbook = "/usr/share/ovirt-ansible-v2v-conversion-host/playbooks/conversion_host_enable.yml"
+  def enable_conversion_host_role(vmware_vddk_package_url = nil, vmware_ssh_private_key = nil, miq_task_id = nil)
+    raise "vmware_vddk_package_url is mandatory if transformation method is vddk" if vddk_transport_supported && vmware_vddk_package_url.nil?
+    raise "vmware_ssh_private_key is mandatory if transformation_method is ssh" if ssh_transport_supported && vmware_ssh_private_key.nil?
+    playbook = "/usr/share/v2v-conversion-host-ansible/playbooks/conversion_host_enable.yml"
     extra_vars = {
-      :v2v_transport_method => vddk_transport_supported ? 'vddk' : 'ssh',
+      :v2v_host_type        => resource.ext_management_system.emstype,
+      :v2v_transport_method => source_transport_method,
       :v2v_vddk_package_url => vmware_vddk_package_url,
       :v2v_ssh_private_key  => vmware_ssh_private_key,
       :v2v_ca_bundle        => resource.ext_management_system.connection_configurations['default'].certificate_authority
     }.compact
-    ansible_playbook(playbook, extra_vars)
+    ansible_playbook(playbook, extra_vars, miq_task_id)
   ensure
-    check_conversion_host_role
+    check_conversion_host_role(miq_task_id)
   end
 
-  def disable_conversion_host_role
-    playbook = "/usr/share/ovirt-ansible-v2v-conversion-host/playbooks/conversion_host_disable.yml"
-    ansible_playbook(playbook)
+  def disable_conversion_host_role(miq_task_id = nil)
+    playbook = "/usr/share/v2v-conversion-host-ansible/playbooks/conversion_host_disable.yml"
+    extra_vars = {
+      :v2v_host_type        => resource.ext_management_system.emstype,
+      :v2v_transport_method => source_transport_method
+    }
+    ansible_playbook(playbook, extra_vars, miq_task_id)
   ensure
-    check_conversion_host_role
+    check_conversion_host_role(miq_task_id)
   end
 
   private
@@ -211,20 +241,23 @@ class ConversionHost < ApplicationRecord
   end
 
   # Find the credentials for the associated resource. By default it will
-  # look for a v2v auth type. If that is not found, it will look for the
-  # authentication associated with the resource using ssh_keypair or default,
-  # in that order, as the authtype.
+  # look for a v2v auth type if no argument is passed in.
   #
-  def find_credentials(msg = nil)
-    authentication = authentication_type('v2v') ||
-      resource.authentication_type('ssh_keypair') ||
-      resource.authentication_type('default')
+  # If one isn't found, then it will look for the authentication associated
+  # with the resource using the 'ssh_keypair' auth type, and finally 'default'.
+  #
+  def find_credentials(auth_type = 'v2v')
+    authentication = authentication_type(auth_type)
+
+    if authentication.blank?
+      res = resource.respond_to?(:authentication_type) ? resource : resource.ext_management_system
+      authentication = res.authentication_type('ssh_keypair') || res.authentication_type('default')
+    end
 
     unless authentication
-      msg = "Credentials not found for conversion host #{name} or resource #{resource.name}"
-      msg << " #{msg}" if msg
-      _log.error(msg)
-      raise MiqException::Error, msg
+      error_msg = "Credentials not found for conversion host #{name} or resource #{resource.name}"
+      _log.error(error_msg)
+      raise MiqException::Error, error_msg
     end
 
     authentication
@@ -274,16 +307,38 @@ class ConversionHost < ApplicationRecord
   # +extra_vars+ option should be a hash of key/value pairs which, if present,
   # will be passed to the '-e' flag.
   #
-  def ansible_playbook(playbook, extra_vars = {})
-    command = "ansible-playbook #{playbook} -i #{ipaddress}"
+  def ansible_playbook(playbook, extra_vars = {}, miq_task_id = nil, auth_type = nil)
+    task = MiqTask.find(miq_task_id) if miq_task_id.present?
 
-    extra_vars[:v2v_host_type] = resource.ext_management_system.emstype
-    extra_vars.each { |k, v| command += " -e '#{k}=#{v}'" }
+    host = hostname || ipaddress
 
-    connect_ssh { |ssu| ssu.shell_exec(command) }
-  rescue => e
-    _log.error("Ansible playbook '#{playbook}' failed for '#{resource.name}' with [#{e.class}: #{e}]")
-    raise e
+    command = "ansible-playbook #{playbook} --inventory #{host}, --become --extra-vars=\"ansible_ssh_common_args='-o StrictHostKeyChecking=no'\""
+
+    auth = find_credentials(auth_type)
+    command << " --user #{auth.userid}"
+
+    case auth
+    when AuthUseridPassword
+      extra_vars[:ansible_ssh_pass] = auth.password
+    when AuthPrivateKey
+      ssh_private_key_file = Tempfile.new('ansible_key')
+      begin
+        ssh_private_key_file.write(auth.auth_key)
+      ensure
+        ssh_private_key_file.close
+      end
+      command << " --private-key #{ssh_private_key_file.path}"
+    else
+      raise MiqException::MiqInvalidCredentialsError, _("Unknown auth type: #{auth.authtype}")
+    end
+
+    extra_vars.each { |k, v| command << " --extra-vars '#{k}=#{v}'" }
+
+    result = AwesomeSpawn.run(command)
+    raise unless result.exit_status.zero?
+  ensure
+    task&.update_context(task.context_data.merge!(File.basename(playbook, '.yml') => result.output)) unless result.nil?
+    ssh_private_key_file&.unlink
   end
 
   # Wrapper method for the various tag_resource_as_xxx methods.

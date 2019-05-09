@@ -511,6 +511,12 @@ describe MiqRequest do
       expect(user.current_group).to eq(group1)
       expect(request.get_user.current_group).to eq(group1)
     end
+
+    it "returns superadmin if user was deleted" do
+      request = FactoryBot.create(:miq_provision_request, :requester => user)
+      user.destroy
+      expect(request.get_user).to eq(User.super_admin)
+    end
   end
 
   context "#update_request" do
@@ -550,6 +556,11 @@ describe MiqRequest do
 
       expect(request.options[:abc]).to eq(1)
     end
+  end
+
+  let(:vm_retire_request) { FactoryBot.create(:vm_retire_request, :requester => fred) }
+  it "retire_request has source" do
+    expect(vm_retire_request.source_type).not_to eq(nil)
   end
 
   context "retire request source classes" do

@@ -940,6 +940,20 @@ describe ServiceTemplate do
   let(:ra1) { FactoryBot.create(:resource_action, :action => 'Provision') }
   let(:ra2) { FactoryBot.create(:resource_action, :action => 'Retirement') }
   let(:ems) { FactoryBot.create(:ems_amazon) }
+  let(:content) do
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAABGdBTUEAALGP"\
+      "C/xhBQAAACBjSFJNAAB6JgAAgIQAAPoAAACA6AAAdTAAAOpgAAA6mAAAF3Cc"\
+      "ulE8AAAACXBIWXMAAAsTAAALEwEAmpwYAAABWWlUWHRYTUw6Y29tLmFkb2Jl"\
+      "LnhtcAAAAAAAPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIg"\
+      "eDp4bXB0az0iWE1QIENvcmUgNS40LjAiPgogICA8cmRmOlJERiB4bWxuczpy"\
+      "ZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1u"\
+      "cyMiPgogICAgICA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIgogICAg"\
+      "ICAgICAgICB4bWxuczp0aWZmPSJodHRwOi8vbnMuYWRvYmUuY29tL3RpZmYv"\
+      "MS4wLyI+CiAgICAgICAgIDx0aWZmOk9yaWVudGF0aW9uPjE8L3RpZmY6T3Jp"\
+      "ZW50YXRpb24+CiAgICAgIDwvcmRmOkRlc2NyaXB0aW9uPgogICA8L3JkZjpS"\
+      "REY+CjwveDp4bXBtZXRhPgpMwidZAAAADUlEQVQIHWNgYGCwBQAAQgA+3N0+"\
+      "xQAAAABJRU5ErkJggg=="
+  end
   let(:vm) { FactoryBot.create(:vm_amazon, :ext_management_system => ems) }
   let(:flavor) { FactoryBot.create(:flavor_amazon) }
   let(:request_dialog) { FactoryBot.create(:miq_dialog_provision) }
@@ -950,6 +964,7 @@ describe ServiceTemplate do
       :service_type => 'atomic',
       :prov_type    => 'amazon',
       :display      => 'false',
+      :picture      => { :content => content, :extension => 'jpg' },
       :description  => 'a description',
       :config_info  => {
         :miq_request_dialog_name => request_dialog.name,
@@ -978,6 +993,7 @@ describe ServiceTemplate do
 
       expect(service_template.name).to eq('Atomic Service Template')
       expect(service_template.service_resources.count).to eq(1)
+      expect(Base64.strict_encode64(service_template.picture.content)).to start_with('aVZCT1J3MEtHZ29BQUFBTlNVaEVVZ0FBQUFFQUFBQUJDQVlBQ')
       expect(service_template.service_resources.first.resource_type).to eq('MiqRequest')
       expect(service_template.dialogs.first).to eq(service_dialog)
       expect(service_template.resource_actions.pluck(:action)).to include('Provision', 'Retirement')
@@ -986,14 +1002,37 @@ describe ServiceTemplate do
       expect(service_template.resource_actions.last.dialog).to eq(service_dialog)
       expect(service_template.config_info).to eq(catalog_item_options[:config_info])
     end
+
+    context "with an existing picture" do
+      let(:picture) { Picture.create(catalog_item_options.delete(:picture)) }
+
+      it "creates the picture without error" do
+        expect {
+          service_template = ServiceTemplate.create_catalog_item(catalog_item_options, user)
+          service_template.picture = picture
+        }.not_to raise_error
+      end
+
+      it "has the picture assigned properly" do
+        service_template = ServiceTemplate.create_catalog_item(catalog_item_options, user)
+        service_template.picture = picture
+        service_template.save
+
+        service_template.reload
+
+        expect(service_template.picture.id).to eq picture.id
+      end
+    end
   end
 
   describe '#update_catalog_item' do
     let(:new_vm) { FactoryBot.create(:vm_amazon, :ext_management_system => ems) }
+    let(:new_picture_content) { "iVBORw0KGgoAAAAN" }
     let(:updated_catalog_item_options) do
       {
         :name        => 'Updated Template Name',
         :display     => 'false',
+        :picture     => { :content => new_picture_content, :extension => 'jpg' },
         :description => 'a description',
         :config_info => {
           :miq_request_dialog_name => request_dialog.name,
@@ -1021,19 +1060,40 @@ describe ServiceTemplate do
       @catalog_item.update_attributes!(:options => @catalog_item.options.merge(:foo => 'bar'))
     end
 
-    it 'updates the catalog item' do
-      updated = @catalog_item.update_catalog_item(updated_catalog_item_options, user)
+    context "without config info" do
+      it 'updates the catalog item' do
+        updated = @catalog_item.update_catalog_item(updated_catalog_item_options, user)
 
-      # Removes Retirement / Adds Reconfigure
-      expect(updated.resource_actions.pluck(:action)).to match_array(%w(Provision Reconfigure))
-      expect(updated.resource_actions.first.dialog_id).to be_nil # Removes the dialog from Provision
-      expect(updated.resource_actions.first.fqname).to eq('/a1/b1/c1')
-      expect(updated.resource_actions.last.dialog).to eq(service_dialog)
-      expect(updated.resource_actions.last.fqname).to eq('/x1/y1/z1')
-      expect(updated.name).to eq('Updated Template Name')
-      expect(updated.service_resources.first.resource.source_id).to eq(new_vm.id) # Validate request update
-      expect(updated.config_info).to eq(updated_catalog_item_options[:config_info])
-      expect(updated.options.key?(:foo)).to be_truthy # Test that the options were merged
+        # Removes Retirement / Adds Reconfigure
+        expect(updated.resource_actions.pluck(:action)).to match_array(%w[Provision Reconfigure])
+        expect(updated.resource_actions.first.dialog_id).to be_nil # Removes the dialog from Provision
+        expect(updated.resource_actions.first.fqname).to eq('/a1/b1/c1')
+        expect(updated.resource_actions.last.dialog).to eq(service_dialog)
+        expect(updated.resource_actions.last.fqname).to eq('/x1/y1/z1')
+        expect(updated.name).to eq('Updated Template Name')
+        expect(Base64.strict_encode64(updated.picture.content)).to eq('aVZCT1J3MEtHZ29BQUFBTg==')
+        expect(updated.service_resources.first.resource.source_id).to eq(new_vm.id) # Validate request update
+        expect(updated.config_info).to eq(updated_catalog_item_options[:config_info])
+        expect(updated.options.key?(:foo)).to be_truthy # Test that the options were merged
+      end
+    end
+
+    context "with config info" do
+      it 'updates the catalog item' do
+        @catalog_item.update_attributes!(:options => @catalog_item.options.merge(:config_info => 'bar'))
+        updated = @catalog_item.update_catalog_item(updated_catalog_item_options, user)
+
+        expect(updated.resource_actions.pluck(:action)).to match_array(%w[Provision Reconfigure])
+        expect(updated.resource_actions.first.dialog_id).to be_nil # Removes the dialog from Provision
+        expect(updated.resource_actions.first.fqname).to eq('/a1/b1/c1')
+        expect(updated.resource_actions.last.dialog).to eq(service_dialog)
+        expect(updated.resource_actions.last.fqname).to eq('/x1/y1/z1')
+        expect(updated.name).to eq('Updated Template Name')
+        expect(Base64.strict_encode64(updated.picture.content)).to eq('aVZCT1J3MEtHZ29BQUFBTg==')
+        expect(updated.service_resources.first.resource.source_id).to eq(new_vm.id) # Validate request update
+        expect(updated.config_info).to eq(updated_catalog_item_options[:config_info])
+        expect(updated.options.key?(:foo)).to be_truthy # Test that the options were merged
+      end
     end
 
     it 'does not allow service_type to be changed' do

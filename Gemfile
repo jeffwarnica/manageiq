@@ -24,7 +24,7 @@ manageiq_plugin "manageiq-providers-ansible_tower" # can't move this down yet, b
 manageiq_plugin "manageiq-schema"
 
 # Unmodified gems
-gem "activerecord-id_regions",        "~>0.2.0"
+gem "activerecord-virtual_attributes", "~>1.1.0"
 gem "activerecord-session_store",     "~>1.1"
 gem "acts_as_tree",                   "~>2.7" # acts_as_tree needs to be required so that it loads before ancestry
 gem "ancestry",                       "~>3.0.4",       :require => false
@@ -37,23 +37,23 @@ gem "dalli",                          "=2.7.6",        :require => false
 gem "default_value_for",              "~>3.0.3"
 gem "docker-api",                     "~>1.33.6",      :require => false
 gem "elif",                           "=0.1.0",        :require => false
-gem "fast_gettext",                   "~>1.2.0"
+gem "fast_gettext",                   "~>2.0.1"
 gem "gettext_i18n_rails",             "~>1.7.2"
 gem "gettext_i18n_rails_js",          "~>1.3.0"
 gem "hamlit",                         "~>2.8.5"
 gem "highline",                       "~>1.6.21",      :require => false
 gem "inifile",                        "~>3.0",         :require => false
-gem "inventory_refresh",              "~>0.1.2",       :require => false
+gem "inventory_refresh",              "~>0.2.0",       :require => false
 gem "kubeclient",                     "~>4.0",         :require => false # For scaling pods at runtime
 gem "linux_admin",                    "~>1.2.1",       :require => false
 gem "log_decorator",                  "~>0.1",         :require => false
 gem "manageiq-api-client",            "~>0.3.3",       :require => false
-gem "manageiq-messaging",                              :require => false, :git => "https://github.com/ManageIQ/manageiq-messaging", :branch => "master"
+gem "manageiq-messaging",             "~>0.1.4",       :require => false
 gem "manageiq-password",              "~>0.3",         :require => false
 gem "manageiq-postgres_ha_admin",     "~>3.0",         :require => false
 gem "memoist",                        "~>0.15.0",      :require => false
 gem "mime-types",                     "~>3.0",         :path => File.expand_path("mime-types-redirector", __dir__)
-gem "more_core_extensions",           "~>3.5"
+gem "more_core_extensions",           "~>3.7"
 gem "nakayoshi_fork",                 "~>0.0.3"  # provides a more CoW friendly fork (GC a few times before fork)
 gem "net-ldap",                       "~>0.16.1",      :require => false
 gem "net-ping",                       "~>1.7.4",       :require => false

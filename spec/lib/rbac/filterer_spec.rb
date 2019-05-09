@@ -16,7 +16,7 @@ describe Rbac::Filterer do
       actual, = Rbac::Filterer.search(:targets => Vm, :user => user)
 
       expected = [vm1, vm2]
-      expect(actual).to match(expected)
+      expect(actual).to match_array(expected)
     end
 
     it "supports AND conditions within categories" do
@@ -230,6 +230,24 @@ describe Rbac::Filterer do
         end
       end
 
+      context 'searching for instances of Lans' do
+        let!(:lan) { FactoryBot.create_list(:lan, 2).first }
+
+        before do
+          lan.tag_with('/managed/environment/prod', :ns => '*')
+        end
+
+        it 'lists only tagged Lans' do
+          results = described_class.search(:class => Lan, :user => user).first
+          expect(results).to match_array [lan]
+        end
+
+        it 'lists only all Lans' do
+          results = described_class.search(:class => Lan, :user => admin_user).first
+          expect(results).to match_array Lan.all
+        end
+      end
+
       context 'searching for instances of ConfigurationScriptSource' do
         let!(:configuration_script_source) { FactoryBot.create_list(:embedded_ansible_configuration_script_source, 2).first }
 
@@ -358,6 +376,79 @@ describe Rbac::Filterer do
           _other_resource = FactoryBot.create(factory_name, :tenant => other_tenant)
           results = described_class.filtered(klass, :user => owner_user)
           expect(results).to match_array [owned_resource]
+        end
+      end
+    end
+
+    context "with ContainerManagers with user roles" do
+      let(:owned_ems) { FactoryBot.create(:ems_openshift) }
+      let(:other_ems) { FactoryBot.create(:ems_openshift) }
+
+      before do
+        filters = ["/belongsto/ExtManagementSystem|#{owned_ems.name}"]
+
+        owner_group.entitlement = Entitlement.new
+        owner_group.entitlement.set_managed_filters([])
+        owner_group.entitlement.set_belongsto_filters(filters)
+        owner_group.save!
+      end
+
+      %w[
+        Container
+        ContainerBuild
+        ContainerGroup
+        ContainerImage
+        ContainerImageRegistry
+        ContainerNode
+        ContainerProject
+        ContainerReplicator
+        ContainerRoute
+        ContainerService
+        ContainerTemplate
+      ].each do |object_klass|
+        context "with #{object_klass}s" do
+          let(:subklass) { owned_ems.class.const_get(object_klass) }
+          let!(:object1) { subklass.create(:ems_id => owned_ems.id) }
+          let!(:object2) { subklass.create(:ems_id => owned_ems.id) }
+          let!(:object3) { subklass.create(:ems_id => other_ems.id) }
+          let!(:object4) { subklass.create(:ems_id => other_ems.id) }
+
+          it "properly filters" do
+            search_opts = {
+              :targets => subklass,
+              :userid  => owner_user.userid
+            }
+            results = described_class.search(search_opts)
+            objects = results.first
+
+            expect(objects.length).to eq(2)
+            expect(objects.to_a).to match_array([object1, object2])
+          end
+        end
+      end
+
+      # ContainerVolumes are the only class that has a `has_many :through`
+      # relationship with EMS.
+      context "with ContainerVolumes" do
+        let(:subklass)     { owned_ems.class.const_get(:ContainerGroup) }
+        let(:volume_klass) { owned_ems.class.const_get(:ContainerVolume) }
+        let!(:group1)      { subklass.create(:ems_id => owned_ems.id) }
+        let!(:group2)      { subklass.create(:ems_id => other_ems.id) }
+        let!(:volume1)     { volume_klass.create(:parent => group1) }
+        let!(:volume2)     { volume_klass.create(:parent => group1) }
+        let!(:volume3)     { volume_klass.create(:parent => group2) }
+        let!(:volume4)     { volume_klass.create(:parent => group2) }
+
+        it "properly filters" do
+          search_opts = {
+            :targets => volume_klass,
+            :userid  => owner_user.userid
+          }
+          results = described_class.search(search_opts)
+          objects = results.first
+
+          expect(objects.length).to eq(2)
+          expect(objects.to_a).to match_array([volume1, volume2])
         end
       end
     end
@@ -1244,17 +1335,17 @@ describe Rbac::Filterer do
       end
 
       context "with VMs and Templates" do
+        let(:root) { FactoryBot.create(:ems_folder, :name => "Datacenters").tap { |ems_folder| ems_folder.parent = @ems } }
+
+        let(:dc) { FactoryBot.create(:ems_folder, :name => "Datacenter1").tap { |data_center| data_center.parent = root } }
+
+        let(:hfolder) { FactoryBot.create(:ems_folder, :name => "host").tap { |hfolder| hfolder.parent = dc } }
+
         before do
           @ems = FactoryBot.create(:ems_vmware, :name => 'ems1')
           @host1.update_attributes(:ext_management_system => @ems)
           @host2.update_attributes(:ext_management_system => @ems)
 
-          root            = FactoryBot.create(:ems_folder, :name => "Datacenters")
-          root.parent     = @ems
-          dc              = FactoryBot.create(:datacenter, :name => "Datacenter1")
-          dc.parent       = root
-          hfolder         = FactoryBot.create(:ems_folder, :name => "host")
-          hfolder.parent  = dc
           @vfolder        = FactoryBot.create(:ems_folder, :name => "vm")
           @vfolder.parent = dc
           @host1.parent   = hfolder
@@ -1318,6 +1409,31 @@ describe Rbac::Filterer do
             results = described_class.search(:class => "ExtManagementSystem", :user => user)
             objects = results.first
             expect(objects).to eq([@ems])
+          end
+
+          context "deleted cluster from belongsto filter" do
+            let!(:group)   { FactoryBot.create(:miq_group, :tenant => default_tenant) }
+            let!(:user)    { FactoryBot.create(:user, :miq_groups => [group]) }
+            let(:cluster_1) { FactoryBot.create(:ems_cluster, :name => "MTC Development 1").tap { |cluster| cluster.parent = hfolder } }
+            let(:cluster_2) { FactoryBot.create(:ems_cluster, :name => "MTC Development 2").tap { |cluster| cluster.parent = hfolder } }
+            let(:vm_folder_path) { "/belongsto/ExtManagementSystem|#{@ems.name}/EmsFolder|#{root.name}/EmsFolder|#{dc.name}/EmsFolder|#{hfolder.name}/EmsCluster|#{cluster_1.name}" }
+
+            it "honors ems_id conditions" do
+              group.entitlement = Entitlement.new
+              group.entitlement.set_belongsto_filters([vm_folder_path])
+              group.entitlement.set_managed_filters([])
+              group.save!
+
+              results = described_class.filtered(EmsCluster, :user => user)
+
+              expect(results).to match_array([cluster_1])
+
+              cluster_1.destroy
+
+              results = described_class.filtered(EmsCluster, :user => user)
+
+              expect(results).to be_empty
+            end
           end
         end
 
@@ -1444,6 +1560,7 @@ describe Rbac::Filterer do
 
           @cluster = FactoryBot.create(:ems_cluster, :name => "MTC Development")
           @cluster.parent = @hfolder
+
           @cluster_folder_path = "#{@mtc_folder_path}/EmsFolder|#{@hfolder.name}/EmsCluster|#{@cluster.name}"
 
           @rp = FactoryBot.create(:resource_pool, :name => "Default for MTC Development")
@@ -2666,6 +2783,85 @@ describe Rbac::Filterer do
 
       result = described_class.filtered(Vm, :user => user_t2)
       expect(result).to eq([vm_other_region])
+    end
+  end
+
+  context "additional tenancy on ServiceTemplates" do
+    # tenant_root
+    #   \___ tenant_pineapple
+    #     \__ subtenant_tenant_pineapple_1
+    #     \__ subtenant_tenant_pineapple_2
+    #     \__ subtenant_tenant_pineapple_3  <- service_template_1_1 shared for subtenant_tenant_pineapple_3 (TEST CASE 3)
+    #   \___ tenant_eye_bee_em (service_template_eye_bee_em)
+    #     \__ subtenant_tenant_eye_bee_em_1 (service_template_1)
+    #       \__ subtenant_tenant_eye_bee_em_1_1 (service_template_1_1)  <- SHARED TENANT (for test cases below)
+    #       \__ subtenant_tenant_eye_bee_em_1_2                         <- service_template_1_1 shared for subtenant_tenant_eye_bee_em_1_2 (TEST CASE 1)
+    #     \__ subtenant_tenant_eye_bee_em_2 (service_template_2)
+    #     \__ subtenant_tenant_eye_bee_em_3  (service_template_3)       <- service_template_1_1 shared for subtenant_tenant_eye_bee_em_3 (TEST CASE 2)
+
+    let!(:tenant_root) { Tenant.seed }
+
+    let!(:tenant_pineapple)             { FactoryBot.create(:tenant, :parent => tenant_root) }
+    let!(:subtenant_tenant_pineapple_1) { FactoryBot.create(:tenant, :parent => tenant_pineapple) }
+    let!(:subtenant_tenant_pineapple_2) { FactoryBot.create(:tenant, :parent => tenant_pineapple) }
+    let!(:subtenant_tenant_pineapple_3) { FactoryBot.create(:tenant, :parent => tenant_pineapple) }
+
+    let!(:tenant_eye_bee_em) { FactoryBot.create(:tenant, :parent => tenant_root) }
+    let!(:subtenant_tenant_eye_bee_em_1) { FactoryBot.create(:tenant, :parent => tenant_eye_bee_em) }
+    let!(:subtenant_tenant_eye_bee_em_2) { FactoryBot.create(:tenant, :parent => tenant_eye_bee_em) }
+    let!(:subtenant_tenant_eye_bee_em_3) { FactoryBot.create(:tenant, :parent => tenant_eye_bee_em) }
+
+    let!(:subtenant_tenant_eye_bee_em_1_1) { FactoryBot.create(:tenant, :parent => subtenant_tenant_eye_bee_em_1) }
+    let!(:subtenant_tenant_eye_bee_em_1_2) { FactoryBot.create(:tenant, :parent => subtenant_tenant_eye_bee_em_1) }
+
+    let!(:service_template_eye_bee_em) { FactoryBot.create(:service_template, :tenant => tenant_eye_bee_em) }
+    let!(:service_template_1)          { FactoryBot.create(:service_template, :tenant => subtenant_tenant_eye_bee_em_1) }
+    let!(:service_template_2)          { FactoryBot.create(:service_template, :tenant => subtenant_tenant_eye_bee_em_2) }
+    let!(:service_template_3)          { FactoryBot.create(:service_template, :tenant => subtenant_tenant_eye_bee_em_3) }
+    let!(:service_template_1_1)        { FactoryBot.create(:service_template, :tenant => subtenant_tenant_eye_bee_em_1_1) }
+
+    let!(:group_eye_bee_em_subtenant_tenant_1_2) { FactoryBot.create(:miq_group, :tenant => subtenant_tenant_eye_bee_em_1_2) }
+    let!(:user_subtenant_tenant_eye_bee_em_1_2) { FactoryBot.create(:user, :miq_groups => [group_eye_bee_em_subtenant_tenant_1_2]) }
+
+    it "shares service_template_1_1 for subtenant_tenant_eye_bee_em_2 (TEST CASE 1)" do
+      # ancestors for subtenant_tenant_eye_bee_em_1_2: tenant_eye_bee_em, subtenant_tenant_eye_bee_em_1
+      result = described_class.filtered(ServiceTemplate, :user => user_subtenant_tenant_eye_bee_em_1_2)
+      expect(result.ids).to match_array([service_template_eye_bee_em.id, service_template_1.id])
+
+      service_template_1_1.additional_tenants << subtenant_tenant_eye_bee_em_1_2
+      result = described_class.filtered(ServiceTemplate, :user => user_subtenant_tenant_eye_bee_em_1_2)
+
+      # ancestors for subtenant_tenant_eye_bee_em_1_2: tenant_eye_bee_em, subtenant_tenant_eye_bee_em_1
+      expect(result.ids).to match_array([service_template_eye_bee_em.id, service_template_1.id, service_template_1_1.id])
+    end
+
+    let!(:group_eye_bee_em_subtenant_tenant_3) { FactoryBot.create(:miq_group, :tenant => subtenant_tenant_eye_bee_em_3) }
+    let!(:user_subtenant_tenant_eye_bee_em_3) { FactoryBot.create(:user, :miq_groups => [group_eye_bee_em_subtenant_tenant_3]) }
+
+    it "shares service_template_1_1 for subtenant_tenant_eye_bee_em_3 (TEST CASE 2)" do
+      # ancestors for subtenant_tenant_eye_bee_em_3: tenant_eye_bee_em
+      result = described_class.filtered(ServiceTemplate, :user => user_subtenant_tenant_eye_bee_em_3)
+
+      expect(result.ids).to match_array([service_template_eye_bee_em.id, service_template_3.id])
+
+      service_template_1_1.additional_tenants << subtenant_tenant_eye_bee_em_3
+      result = described_class.filtered(ServiceTemplate, :user => user_subtenant_tenant_eye_bee_em_3)
+
+      expect(result.ids).to match_array([service_template_eye_bee_em.id, service_template_3.id, service_template_1_1.id])
+    end
+
+    let!(:group_pineapple_3) { FactoryBot.create(:miq_group, :tenant => subtenant_tenant_pineapple_3) }
+    let!(:user_pineapple_3) { FactoryBot.create(:user, :miq_groups => [group_pineapple_3]) }
+
+    it "shares service_template_1_1 for subtenant_tenant_pineapple_3 (TEST CASE 3)" do
+      # no ancestors for tenant_pineapple_3
+      result = described_class.filtered(ServiceTemplate, :user => user_pineapple_3)
+      expect(result.ids).to be_empty
+
+      service_template_1_1.additional_tenants << subtenant_tenant_pineapple_3
+      result = described_class.filtered(ServiceTemplate, :user => user_pineapple_3)
+
+      expect(result.ids).to match_array([service_template_1_1.id])
     end
   end
 
